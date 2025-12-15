@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.cursor/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Training outputs (keep locally, don't push)
+models/
+*/models/
+logs/
+*/logs/
+tensorboard_logs/
+output/
+*/output/
+*.zip
+checkpoints/
+
+# Generated images
+stent_rl_results.png
+*.png
+
+# Temporary
+*.tmp
+*.temp
+
+# 4C webviewer clones (large repos)
+4c-webviewer-*/

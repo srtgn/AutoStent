@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoStent - RL Design Optimization</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); }
+        .glass { background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .glow { box-shadow: 0 0 30px rgba(99, 102, 241, 0.3); }
+        .metric-card { 
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(99, 102, 241, 0.4); }
+        input[type="range"] { -webkit-appearance: none; background: transparent; }
+        input[type="range"]::-webkit-slider-track { background: rgba(255,255,255,0.1); height: 6px; border-radius: 3px; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; height: 18px; width: 18px; border-radius: 50%; background: #6366f1; cursor: pointer; margin-top: -6px; }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen text-white">
+    <div id="app" class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="text-center mb-12">
+            <h1 class="text-5xl font-bold mb-2 bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
+                AutoStent
+            </h1>
+            <p class="text-xl text-gray-400">Reinforcement Learning for Autonomous Stent Design</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Left Panel - Controls -->
+            <div class="glass rounded-2xl p-6 glow">
+                <h2 class="text-xl font-semibold mb-6 flex items-center">
+                    <span class="mr-2">⚙️</span> Design Parameters
+                </h2>
+                
+                <div class="space-y-6">
+                    <div>
+                        <label class="flex justify-between text-sm text-gray-400 mb-2">
+                            <span>Diameter</span>
+                            <span class="text-indigo-400">{{ params.diameter.toFixed(1) }} mm</span>
+                        </label>
+                        <input type="range" v-model.number="params.diameter" min="6" max="14" step="0.5" class="w-full">
+                    </div>
+                    
+                    <div>
+                        <label class="flex justify-between text-sm text-gray-400 mb-2">
+                            <span>Length</span>
+                            <span class="text-indigo-400">{{ params.length.toFixed(1) }} mm</span>
+                        </label>
+                        <input type="range" v-model.number="params.length" min="10" max="30" step="1" class="w-full">
+                    </div>
+                    
+                    <div>
+                        <label class="flex justify-between text-sm text-gray-400 mb-2">
+                            <span>Strut Thickness</span>
+                            <span class="text-indigo-400">{{ params.strutThickness.toFixed(3) }} mm</span>
+                        </label>
+                        <input type="range" v-model.number="params.strutThickness" min="0.05" max="0.20" step="0.005" class="w-full">
+                    </div>
+                    
+                    <div>
+                        <label class="flex justify-between text-sm text-gray-400 mb-2">
+                            <span>Number of Struts</span>
+                            <span class="text-indigo-400">{{ params.numStruts }}</span>
+                        </label>
+                        <input type="range" v-model.number="params.numStruts" min="6" max="18" step="1" class="w-full">
+                    </div>
+                </div>
+
+                <div class="mt-8 space-y-3">
+                    <button @click="randomStep" class="btn-primary w-full py-3 rounded-xl font-semibold">
+                        🎲 Random Step
+                    </button>
+                    <button @click="trainAgent" :disabled="training" class="btn-primary w-full py-3 rounded-xl font-semibold" :class="{'opacity-50': training}">
+                        {{ training ? '🔄 Training...' : '🚀 Train RL Agent' }}
+                    </button>
+                    <button @click="resetEnv" class="w-full py-3 rounded-xl font-semibold border border-gray-600 hover:border-indigo-500 transition">
+                        🔄 Reset
+                    </button>
+                </div>
+            </div>
+
+            <!-- Center Panel - 3D Visualization -->
+            <div class="glass rounded-2xl p-6">
+                <h2 class="text-xl font-semibold mb-4 flex items-center">
+                    <span class="mr-2">🔬</span> Stent Visualization
+                </h2>
+                <div id="stent-3d" class="h-96 rounded-xl"></div>
+            </div>
+
+            <!-- Right Panel - Metrics -->
+            <div class="space-y-6">
+                <!-- Performance Metrics -->
+                <div class="glass rounded-2xl p-6">
+                    <h2 class="text-xl font-semibold mb-6 flex items-center">
+                        <span class="mr-2">📊</span> Performance
+                    </h2>
+                    
+                    <div class="grid grid-cols-2 gap-4 mb-6">
+                        <div class="metric-card rounded-xl p-4 text-center">
+                            <div class="text-3xl font-bold text-indigo-400">{{ metrics.stress.toFixed(0) }}</div>
+                            <div class="text-sm text-gray-400">Max Stress (MPa)</div>
+                        </div>
+                        <div class="metric-card rounded-xl p-4 text-center">
+                            <div class="text-3xl font-bold text-purple-400">{{ metrics.displacement.toFixed(2) }}</div>
+                            <div class="text-sm text-gray-400">Displacement (mm)</div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <div class="flex justify-between text-sm mb-2">
+                            <span class="text-gray-400">Safety Score</span>
+                            <span class="text-green-400">{{ safetyScore }}%</span>
+                        </div>
+                        <div class="h-2 bg-gray-700 rounded-full overflow-hidden">
+                            <div class="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500" 
+                                 :style="{width: safetyScore + '%'}"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="text-sm text-gray-500">
+                        <div class="mb-1">🎯 <strong>Optimal targets:</strong></div>
+                        <div>• Stress: &lt; 150 MPa</div>
+                        <div>• Thickness: ~0.12 mm</div>
+                        <div>• Diameter: ~10 mm</div>
+                    </div>
+                </div>
+
+                <!-- Training Progress -->
+                <div class="glass rounded-2xl p-6">
+                    <h2 class="text-xl font-semibold mb-4 flex items-center">
+                        <span class="mr-2">📈</span> Training Progress
+                    </h2>
+                    <div id="training-chart" class="h-48"></div>
+                    <div class="mt-4 grid grid-cols-3 gap-2 text-center text-sm">
+                        <div>
+                            <div class="text-xl font-bold text-indigo-400">{{ episodes }}</div>
+                            <div class="text-gray-500">Episodes</div>
+                        </div>
+                        <div>
+                            <div class="text-xl font-bold text-purple-400">{{ steps }}</div>
+                            <div class="text-gray-500">Steps</div>
+                        </div>
+                        <div>
+                            <div class="text-xl font-bold text-green-400">{{ avgReward.toFixed(2) }}</div>
+                            <div class="text-gray-500">Avg Reward</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="text-center mt-12 text-gray-500 text-sm">
+            AutoStent - Research Tool for Autonomous Stent Design | Built with Vue.js & Plotly
+        </footer>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, watch, onMounted } = Vue;
+        
+        createApp({
+            setup() {
+                const params = ref({
+                    diameter: 10.0,
+                    length: 20.0,
+                    strutThickness: 0.12,
+                    numStruts: 12
+                });
+                
+                const metrics = ref({
+                    stress: 150,
+                    displacement: 0.5
+                });
+                
+                const episodeRewards = ref([]);
+                const episodes = ref(0);
+                const steps = ref(0);
+                const training = ref(false);
+                
+                const safetyScore = computed(() => {
+                    return Math.max(0, Math.min(100, Math.round(100 - (metrics.value.stress - 100) / 2)));
+                });
+                
+                const avgReward = computed(() => {
+                    if (episodeRewards.value.length === 0) return 0;
+                    const last10 = episodeRewards.value.slice(-10);
+                    return last10.reduce((a, b) => a + b, 0) / last10.length;
+                });
+                
+                // Physics-based surrogate (client-side approximation)
+                function computeMetrics() {
+                    const d = params.value.diameter;
+                    const t = params.value.strutThickness;
+                    const n = params.value.numStruts;
+                    
+                    const optT = 0.12, optD = 10.0, optN = 12;
+                    const noise = 1 + (Math.random() - 0.5) * 0.1;
+                    
+                    const thicknessFactor = Math.pow(optT / Math.max(t, 0.05), 1.5);
+                    const diameterFactor = Math.pow(optD / Math.max(d, 5), 0.5);
+                    const strutFactor = Math.pow(optN / Math.max(n, 6), 0.8);
+                    
+                    const stress = 100 * thicknessFactor * diameterFactor * strutFactor * noise;
+                    const displacement = 0.3 * (params.value.length / 20) * (optT / Math.max(t, 0.05)) * noise;
+                    
+                    metrics.value.stress = Math.max(50, Math.min(400, stress));
+                    metrics.value.displacement = Math.max(0.1, Math.min(2, displacement));
+                    
+                    return -0.4 * (metrics.value.stress / 200) - 0.2 * metrics.value.displacement;
+                }
+                
+                function randomStep() {
+                    // Random parameter changes
+                    params.value.diameter += (Math.random() - 0.5) * 2;
+                    params.value.diameter = Math.max(6, Math.min(14, params.value.diameter));
+                    
+                    params.value.strutThickness += (Math.random() - 0.5) * 0.02;
+                    params.value.strutThickness = Math.max(0.05, Math.min(0.2, params.value.strutThickness));
+                    
+                    params.value.numStruts += Math.round((Math.random() - 0.5) * 4);
+                    params.value.numStruts = Math.max(6, Math.min(18, params.value.numStruts));
+                    
+                    const reward = computeMetrics();
+                    steps.value++;
+                    
+                    updateStent3D();
+                }
+                
+                function trainAgent() {
+                    training.value = true;
+                    const trainSteps = 500;
+                    let currentStep = 0;
+                    let episodeReward = 0;
+                    let episodeLength = 0;
+                    
+                    const interval = setInterval(() => {
+                        // Simulate RL step
+                        params.value.diameter += (Math.random() - 0.5) * 1;
+                        params.value.diameter = Math.max(6, Math.min(14, params.value.diameter));
+                        
+                        params.value.strutThickness += (Math.random() - 0.5) * 0.01;
+                        params.value.strutThickness = Math.max(0.05, Math.min(0.2, params.value.strutThickness));
+                        
+                        const reward = computeMetrics();
+                        episodeReward += reward;
+                        episodeLength++;
+                        steps.value++;
+                        currentStep++;
+                        
+                        if (episodeLength >= 50) {
+                            episodeRewards.value.push(episodeReward);
+                            episodes.value++;
+                            episodeReward = 0;
+                            episodeLength = 0;
+                            updateTrainingChart();
+                        }
+                        
+                        if (currentStep >= trainSteps) {
+                            clearInterval(interval);
+                            training.value = false;
+                            updateStent3D();
+                        }
+                    }, 10);
+                }
+                
+                function resetEnv() {
+                    params.value = { diameter: 10.0, length: 20.0, strutThickness: 0.12, numStruts: 12 };
+                    metrics.value = { stress: 150, displacement: 0.5 };
+                    episodeRewards.value = [];
+                    episodes.value = 0;
+                    steps.value = 0;
+                    computeMetrics();
+                    updateStent3D();
+                    updateTrainingChart();
+                }
+                
+                function updateStent3D() {
+                    const theta = [];
+                    const x = [], y = [], z = [];
+                    const r = params.value.diameter / 2;
+                    
+                    for (let i = 0; i <= 100; i++) {
+                        theta.push(2 * Math.PI * i / 100);
+                    }
+                    
+                    for (let zi = 0; zi <= 20; zi++) {
+                        const zVal = (zi / 20) * params.value.length;
+                        const xRow = [], yRow = [], zRow = [];
+                        for (let t of theta) {
+                            xRow.push(r * Math.cos(t));
+                            yRow.push(r * Math.sin(t));
+                            zRow.push(zVal);
+                        }
+                        x.push(xRow);
+                        y.push(yRow);
+                        z.push(zRow);
+                    }
+                    
+                    const traces = [{
+                        type: 'surface',
+                        x: x, y: y, z: z,
+                        colorscale: [[0, '#6366f1'], [1, '#8b5cf6']],
+                        opacity: 0.7,
+                        showscale: false
+                    }];
+                    
+                    // Add struts
+                    for (let i = 0; i < params.value.numStruts; i++) {
+                        const angle = 2 * Math.PI * i / params.value.numStruts;
+                        const strutX = [], strutY = [], strutZ = [];
+                        for (let zi = 0; zi <= 20; zi++) {
+                            strutX.push((r + 0.3) * Math.cos(angle));
+                            strutY.push((r + 0.3) * Math.sin(angle));
+                            strutZ.push((zi / 20) * params.value.length);
+                        }
+                        traces.push({
+                            type: 'scatter3d',
+                            mode: 'lines',
+                            x: strutX, y: strutY, z: strutZ,
+                            line: { color: '#ef4444', width: 8 },
+                            showlegend: false
+                        });
+                    }
+                    
+                    Plotly.react('stent-3d', traces, {
+                        scene: {
+                            xaxis: { title: 'X (mm)', gridcolor: '#333', zerolinecolor: '#333' },
+                            yaxis: { title: 'Y (mm)', gridcolor: '#333', zerolinecolor: '#333' },
+                            zaxis: { title: 'Z (mm)', gridcolor: '#333', zerolinecolor: '#333' },
+                            bgcolor: 'rgba(0,0,0,0)',
+                            aspectmode: 'data'
+                        },
+                        paper_bgcolor: 'rgba(0,0,0,0)',
+                        plot_bgcolor: 'rgba(0,0,0,0)',
+                        margin: { l: 0, r: 0, t: 0, b: 0 }
+                    }, { responsive: true });
+                }
+                
+                function updateTrainingChart() {
+                    if (episodeRewards.value.length === 0) {
+                        Plotly.react('training-chart', [{
+                            y: [0],
+                            type: 'scatter',
+                            mode: 'lines',
+                            line: { color: '#6366f1' }
+                        }], {
+                            paper_bgcolor: 'rgba(0,0,0,0)',
+                            plot_bgcolor: 'rgba(0,0,0,0)',
+                            margin: { l: 40, r: 10, t: 10, b: 30 },
+                            xaxis: { gridcolor: '#333', title: 'Episode' },
+                            yaxis: { gridcolor: '#333', title: 'Reward' },
+                            font: { color: '#888' }
+                        }, { responsive: true });
+                        return;
+                    }
+                    
+                    Plotly.react('training-chart', [{
+                        y: episodeRewards.value,
+                        type: 'scatter',
+                        mode: 'lines',
+                        line: { color: '#6366f1', width: 2 },
+                        fill: 'tozeroy',
+                        fillcolor: 'rgba(99, 102, 241, 0.2)'
+                    }], {
+                        paper_bgcolor: 'rgba(0,0,0,0)',
+                        plot_bgcolor: 'rgba(0,0,0,0)',
+                        margin: { l: 40, r: 10, t: 10, b: 30 },
+                        xaxis: { gridcolor: '#333', title: 'Episode' },
+                        yaxis: { gridcolor: '#333', title: 'Reward' },
+                        font: { color: '#888' }
+                    }, { responsive: true });
+                }
+                
+                watch(params, () => {
+                    computeMetrics();
+                    updateStent3D();
+                }, { deep: true });
+                
+                onMounted(() => {
+                    computeMetrics();
+                    updateStent3D();
+                    updateTrainingChart();
+                });
+                
+                return {
+                    params, metrics, safetyScore, episodeRewards,
+                    episodes, steps, avgReward, training,
+                    randomStep, trainAgent, resetEnv
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
