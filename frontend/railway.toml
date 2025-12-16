@@ -1,0 +1,10 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "frontend/Dockerfile"
+
+[deploy]
+healthcheckPath = "/"
+healthcheckTimeout = 10
+
+[env]
+PORT = "8080"

@@ -52,3 +52,4 @@ stent_rl_results.png
 
 # 4C webviewer clones (large repos)
 4c-webviewer-*/
+vendor/
