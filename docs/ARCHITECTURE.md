@@ -120,3 +120,4 @@ Multi-objective optimization:
 4. **Geometry Types**: Extend `SplineGeometryGenerator`
 5. **Simulation Backends**: Implement custom `FourCSimulator`
 
+

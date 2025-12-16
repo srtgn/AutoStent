@@ -7,7 +7,7 @@ name = "4c-stent-rl"
 version = "0.1.0"
 description = "Automated YAML generator and RL environment for 4C Multiphysics stent design optimization"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
     {name = "4C Stent RL Contributors"}
@@ -50,7 +50,7 @@ fourc-yaml-gen = "fourc_automation.cli:main"
 fourc-rl-train = "gym_4c_stent.train:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
 
 [tool.black]
 line-length = 100
@@ -61,4 +61,5 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+
 
