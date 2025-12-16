@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoStent - RL Design Optimization</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        * {
+            font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', monospace;
+        }
+
+        body {
+            background: #fafafa;
+        }
+
+        .card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+        }
+
+        .param-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .param-row:last-child {
+            border-bottom: none;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #2563eb;
+            color: white;
+            border: none;
+        }
+
+        .btn-primary:hover {
+            background: #1d4ed8;
+        }
+
+        .btn-primary:disabled {
+            background: #93c5fd;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #374151;
+            border: 1px solid #d1d5db;
+        }
+
+        .btn-secondary:hover {
+            background: #f9fafb;
+        }
+
+        .btn-danger {
+            background: #dc2626;
+            color: white;
+            border: none;
+        }
+
+        .btn-danger:hover {
+            background: #b91c1c;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #2563eb;
+            transition: none;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            background: #e5e7eb;
+            border-radius: 3px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #2563eb;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        input[type="number"] {
+            width: 100px;
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            font-family: inherit;
+        }
+
+        /* Move Plotly modebar to top-left in one row */
+        #stent-3d .modebar-container {
+            left: 5px !important;
+            right: auto !important;
+            top: 5px !important;
+        }
+
+        #stent-3d .modebar {
+            display: flex !important;
+            flex-direction: row !important;
+        }
+
+        #stent-3d .modebar-group {
+            display: inline-flex !important;
+            flex-direction: row !important;
+        }
+    </style>
+</head>
+
+<body class="min-h-screen p-6">
+    <div id="app" class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <header class="mb-6 flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">AutoStent Design Optimization</h1>
+                <p class="text-gray-500 text-sm">Reinforcement Learning for Autonomous Stent Design</p>
+            </div>
+            <div class="flex items-center gap-6">
+                <!-- 4C Docker Mode Toggle -->
+                <div class="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg">
+                    <span class="text-xs text-gray-500 uppercase tracking-wide">4C Mode:</span>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" v-model="useDocker" :disabled="training" class="w-4 h-4 accent-blue-600">
+                        <span class="text-sm font-medium" :class="useDocker ? 'text-blue-600' : 'text-gray-500'">
+                            {{ useDocker ? 'Docker (Real 4C)' : 'Mock Physics' }}
+                        </span>
+                    </label>
+                    <span v-if="useDocker && !dockerAvailable" class="text-xs text-amber-500">(x86 only)</span>
+                </div>
+
+                <!-- RL Toggle -->
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" v-model="useRealRL" :disabled="training" class="w-4 h-4">
+                    <span class="text-sm" :class="useRealRL ? 'text-green-600 font-semibold' : 'text-gray-500'">
+                        {{ useRealRL ? 'Real RL (PPO)' : 'Simulated RL' }}
+                    </span>
+                </label>
+                <span v-if="useRealRL && !backendConnected" class="text-xs text-red-500">Backend not running</span>
+                <span v-if="useRealRL && backendConnected" class="text-xs text-green-500">Backend connected</span>
+            </div>
+        </header>
+
+        <!-- Top Row: Parameters + 3D View -->
+        <div class="grid grid-cols-12 gap-6 mb-6">
+            <!-- Left: Parameters -->
+            <div class="col-span-3">
+                <div class="card p-4">
+                    <h2 class="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide">Design Parameters</h2>
+
+                    <div class="space-y-4">
+                        <div>
+                            <div class="flex justify-between text-sm text-gray-600 mb-1">
+                                <span>Diameter</span>
+                                <span class="font-medium">{{ params.diameter.toFixed(2) }} mm</span>
+                            </div>
+                            <input type="range" v-model.number="params.diameter" min="6" max="14" step="0.1"
+                                :disabled="training">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-sm text-gray-600 mb-1">
+                                <span>Length</span>
+                                <span class="font-medium">{{ params.length.toFixed(1) }} mm</span>
+                            </div>
+                            <input type="range" v-model.number="params.length" min="10" max="30" step="0.5"
+                                :disabled="training">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-sm text-gray-600 mb-1">
+                                <span>Strut Thickness</span>
+                                <span class="font-medium">{{ params.strutThickness.toFixed(3) }} mm</span>
+                            </div>
+                            <input type="range" v-model.number="params.strutThickness" min="0.05" max="0.20"
+                                step="0.005" :disabled="training">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-sm text-gray-600 mb-1">
+                                <span>Number of Struts</span>
+                                <span class="font-medium">{{ params.numStruts }}</span>
+                            </div>
+                            <input type="range" v-model.number="params.numStruts" min="6" max="18" step="1"
+                                :disabled="training">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between text-sm text-gray-600 mb-1">
+                                <span>Crown Height</span>
+                                <span class="font-medium">{{ params.crownHeight.toFixed(2) }} mm</span>
+                            </div>
+                            <input type="range" v-model.number="params.crownHeight" min="0.5" max="2.0" step="0.05"
+                                :disabled="training">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Metrics -->
+                <div class="card p-4 mt-4" id="performance-card">
+                    <h2 class="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Performance</h2>
+                    <div class="param-row">
+                        <span class="text-gray-600">Stress</span>
+                        <span class="font-medium" :class="metrics.stress < 150 ? 'text-green-600' : 'text-red-600'">{{
+                            metrics.stress.toFixed(1) }} MPa</span>
+                    </div>
+                    <div class="param-row">
+                        <span class="text-gray-600">Displacement</span>
+                        <span class="font-medium">{{ metrics.displacement.toFixed(3) }} mm</span>
+                    </div>
+                    <div class="param-row">
+                        <span class="text-gray-600">Reward</span>
+                        <span class="font-medium">{{ currentReward.toFixed(4) }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: 3D View (wider) -->
+            <div class="col-span-9">
+                <div class="card p-4 h-full flex flex-col">
+                    <h2 class="text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">3D Geometry</h2>
+                    <div id="stent-3d" class="flex-1" style="min-height: 350px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Row: Training (full width) -->
+        <div class="card p-4">
+            <h2 class="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">RL Training</h2>
+
+            <!-- Controls & Stats in one row -->
+            <div class="flex items-center gap-4 mb-4 pb-4 border-b border-gray-100">
+                <div class="flex items-center gap-2 bg-gray-50 rounded px-3 py-1">
+                    <label class="text-xs text-gray-500">Steps</label>
+                    <input type="number" v-model.number="trainSteps" min="50" max="10000" step="50" :disabled="training"
+                        style="width: 80px; padding: 6px 8px;">
+                </div>
+                <button v-if="!training" @click="trainAgent" class="btn btn-primary">
+                    Train Agent
+                </button>
+                <button v-else @click="stopTraining" class="btn btn-danger">
+                    Stop
+                </button>
+                <button @click="resetEnv" :disabled="training" class="btn btn-secondary">Reset</button>
+
+                <!-- Progress bar -->
+                <div v-if="training || progress > 0" class="flex-1 max-w-xs">
+                    <div class="flex justify-between text-xs text-gray-500 mb-1">
+                        <span>Progress</span>
+                        <span>{{ Math.round(progress * 100) }}%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" :style="{width: (progress * 100) + '%'}"></div>
+                    </div>
+                </div>
+
+                <div class="flex-1"></div>
+
+                <!-- Stats inline -->
+                <div class="flex gap-6 text-center">
+                    <div>
+                        <div class="text-xl font-bold text-gray-800">{{ steps }}</div>
+                        <div class="text-xs text-gray-500">Steps</div>
+                    </div>
+                    <div>
+                        <div class="text-xl font-bold text-gray-800">{{ episodes }}</div>
+                        <div class="text-xs text-gray-500">Episodes</div>
+                    </div>
+                    <div>
+                        <div class="text-xl font-bold" :class="avgReward > -0.4 ? 'text-green-600' : 'text-gray-800'">{{
+                            avgReward.toFixed(3) }}</div>
+                        <div class="text-xs text-gray-500">Avg Reward</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts stacked vertically with more height -->
+            <div>
+                <!-- Reward Chart -->
+                <div class="mb-4">
+                    <div class="text-xs text-gray-500 mb-1 uppercase">Reward Evolution</div>
+                    <div id="reward-chart" style="height: 200px;"></div>
+                </div>
+
+                <!-- Stress Chart -->
+                <div>
+                    <div class="text-xs text-gray-500 mb-1 uppercase">Stress Evolution</div>
+                    <div id="stress-chart" style="height: 200px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Comparison Section -->
+        <div class="card p-4 mt-6">
+            <h2 class="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Performance Comparison: Random
+                vs Trained</h2>
+
+            <div class="flex items-center gap-4 mb-4 pb-4 border-b border-gray-100">
+                <div class="flex items-center gap-2 bg-gray-50 rounded px-3 py-1">
+                    <label class="text-xs text-gray-500">Episodes</label>
+                    <input type="number" v-model.number="comparisonEpisodes" min="5" max="50" step="5"
+                        :disabled="comparing" style="width: 70px; padding: 6px 8px;">
+                </div>
+                <button @click="runComparison" :disabled="comparing || steps === 0" class="btn btn-primary">
+                    {{ comparing ? 'Running...' : 'Run Comparison' }}
+                </button>
+                <span v-if="steps === 0" class="text-xs text-gray-400">Train agent first</span>
+
+                <!-- Progress bar for comparison -->
+                <div v-if="comparing" class="flex-1 max-w-xs">
+                    <div class="flex justify-between text-xs text-gray-500 mb-1">
+                        <span>{{ comparisonPhase }}</span>
+                        <span>{{ Math.round(comparisonProgress * 100) }}%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" :style="{width: (comparisonProgress * 100) + '%'}"></div>
+                    </div>
+                </div>
+
+                <div class="flex-1"></div>
+
+                <!-- Comparison Stats -->
+                <div v-if="comparisonDone" class="flex gap-6 text-center">
+                    <div>
+                        <div class="text-lg font-bold text-blue-600">{{ randomMean.toFixed(2) }}</div>
+                        <div class="text-xs text-gray-500">Random Mean</div>
+                    </div>
+                    <div>
+                        <div class="text-lg font-bold text-orange-600">{{ trainedMean.toFixed(2) }}</div>
+                        <div class="text-xs text-gray-500">Trained Mean</div>
+                    </div>
+                    <div>
+                        <div class="text-lg font-bold" :class="improvement > 0 ? 'text-green-600' : 'text-red-600'">{{
+                            improvement > 0 ? '+' : '' }}{{ improvement.toFixed(1) }}%</div>
+                        <div class="text-xs text-gray-500">Improvement</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Comparison Charts -->
+            <div v-if="comparisonDone" class="grid grid-cols-2 gap-6">
+                <div>
+                    <div class="text-xs text-gray-500 mb-1 uppercase">Box Plot Comparison</div>
+                    <div id="boxplot-chart" style="height: 280px;"></div>
+                </div>
+                <div>
+                    <div class="text-xs text-gray-500 mb-1 uppercase">Reward Distribution</div>
+                    <div id="histogram-chart" style="height: 280px;"></div>
+                </div>
+            </div>
+
+            <div v-else class="text-center py-12 text-gray-400">
+                <p>Train the agent, then click "Run Comparison" to evaluate performance</p>
+            </div>
+        </div>
+
+        <!-- 4C-Webviewer Integrated Panel -->
+        <div v-if="useDocker" class="card p-4 mt-6">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+                    4C Webviewer Integration
+                </h2>
+                <div class="flex items-center gap-4">
+                    <span class="text-xs text-gray-500">Official 4C Multiphysics Viewer</span>
+                    <button @click="show4CViewer = !show4CViewer" class="btn btn-secondary text-xs">
+                        {{ show4CViewer ? 'Hide Viewer' : 'Show Viewer' }}
+                    </button>
+                </div>
+            </div>
+
+            <div v-if="show4CViewer" class="border border-gray-200 rounded-lg overflow-hidden">
+                <div class="bg-gray-50 px-4 py-2 border-b border-gray-200 flex items-center justify-between">
+                    <span class="text-xs text-gray-600">4C-Webviewer @ localhost:5000</span>
+                    <a href="http://localhost:5000" target="_blank" class="text-xs text-blue-600 hover:underline">
+                        Open in new tab ↗
+                    </a>
+                </div>
+                <iframe src="http://localhost:5000" class="w-full bg-white" style="height: 600px; border: none;"
+                    title="4C Webviewer"></iframe>
+            </div>
+
+            <div v-else class="bg-gray-50 rounded-lg p-6 text-center">
+                <p class="text-gray-500 text-sm mb-2">Click "Show Viewer" to embed the 4C-webviewer</p>
+                <p class="text-xs text-gray-400">
+                    Make sure the 4C-webviewer is running: <code
+                        class="bg-gray-200 px-1 rounded">python -m fourc_webviewer</code>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, watch, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const params = ref({
+                    diameter: 10.0,
+                    length: 20.0,
+                    strutThickness: 0.12,
+                    numStruts: 12,
+                    crownHeight: 1.0
+                });
+
+                const metrics = ref({ stress: 150, displacement: 0.5 });
+                const currentReward = ref(0);
+                const episodeRewards = ref([]);
+                const stressHistory = ref([]);
+                const rewardHistory = ref([]);
+                const episodes = ref(0);
+                const steps = ref(0);
+                const training = ref(false);
+                const progress = ref(0);
+                const trainSteps = ref(2000);
+                let trainingInterval = null;
+
+                // Real RL state
+                const useRealRL = ref(false);
+                const backendConnected = ref(false);
+                const backendUrl = 'http://localhost:8765';
+                let pollInterval = null;
+
+                // 4C Docker mode state (uses Railway cloud API)
+                const useDocker = ref(false);
+                const dockerAvailable = ref(true);
+                const railwayUrl = 'https://4c.up.railway.app';  // Railway 4C API
+                const webviewerUrl = 'http://localhost:5000';
+                const show4CViewer = ref(false);
+
+                // Run simulation on Railway when Docker mode is enabled
+                async function runRailwaySimulation(params) {
+                    try {
+                        const response = await fetch(`${railwayUrl}/simulate/sync`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                params: {
+                                    diameter: params.diameter,
+                                    length: params.length,
+                                    strut_thickness: params.strutThickness,
+                                    num_struts: params.numStruts,
+                                    crown_height: params.crownHeight
+                                },
+                                timeout: 60
+                            })
+                        });
+                        const data = await response.json();
+                        if (data.success && data.result) {
+                            return {
+                                stress: data.result.max_stress,
+                                displacement: data.result.max_displacement
+                            };
+                        }
+                    } catch (e) {
+                        console.error('Railway API error:', e);
+                    }
+                    return null;
+                }
+
+                // Check backend connection
+                async function checkBackend() {
+                    try {
+                        const res = await fetch(`${backendUrl}/status`);
+                        if (res.ok) {
+                            backendConnected.value = true;
+                            return true;
+                        }
+                    } catch (e) { }
+                    backendConnected.value = false;
+                    return false;
+                }
+
+                // Poll backend for updates during real RL training
+                function startPolling() {
+                    pollInterval = setInterval(async () => {
+                        try {
+                            const res = await fetch(`${backendUrl}/status`);
+                            const data = await res.json();
+
+                            if (data.is_training) {
+                                training.value = true;
+                                progress.value = data.progress;
+                                steps.value = data.current_step;
+                                episodes.value = data.episodes;
+
+                                // Update params
+                                if (data.current_params && data.current_params.diameter) {
+                                    params.value.diameter = data.current_params.diameter;
+                                    params.value.strutThickness = data.current_params.strut_thickness || 0.12;
+                                    params.value.numStruts = data.current_params.num_struts || 12;
+                                    params.value.crownHeight = data.current_params.crown_height || 1.0;
+                                    params.value.length = data.current_params.length || 20;
+                                    computeMetrics();
+                                }
+
+                                // Update histories
+                                if (data.rewards.length > 0) {
+                                    rewardHistory.value = data.rewards;
+                                }
+                                if (data.stress_history.length > 0) {
+                                    stressHistory.value = data.stress_history;
+                                }
+                                if (data.episode_rewards.length > 0) {
+                                    episodeRewards.value = data.episode_rewards;
+                                }
+
+                                updateStent3D();
+                                updateCharts();
+                            } else if (training.value && data.progress >= 1) {
+                                // Training completed
+                                training.value = false;
+                                if (data.best_params && data.best_params.diameter) {
+                                    trainedPolicy.value = data.best_params;
+                                    params.value.diameter = data.best_params.diameter;
+                                    params.value.strutThickness = data.best_params.strut_thickness || 0.12;
+                                    params.value.numStruts = data.best_params.num_struts || 12;
+                                    params.value.crownHeight = data.best_params.crown_height || 1.0;
+                                }
+                                comparisonEpisodes.value = Math.min(episodes.value, 30);
+                                computeMetrics();
+                                updateStent3D();
+                                updateCharts();
+                                stopPolling();
+                            }
+                        } catch (e) {
+                            console.error('Polling error:', e);
+                        }
+                    }, 200);
+                }
+
+                function stopPolling() {
+                    if (pollInterval) {
+                        clearInterval(pollInterval);
+                        pollInterval = null;
+                    }
+                }
+
+                // Comparison state
+                const comparing = ref(false);
+                const comparisonDone = ref(false);
+                const comparisonEpisodes = ref(20);
+                const randomRewards = ref([]);
+                const trainedRewards = ref([]);
+                const randomMean = ref(0);
+                const trainedMean = ref(0);
+                const improvement = ref(0);
+                const comparisonProgress = ref(0);
+                const comparisonPhase = ref('');
+
+                // Store trained policy (best params found during training)
+                const trainedPolicy = ref(null);
+
+                const avgReward = computed(() => {
+                    if (rewardHistory.value.length === 0) return 0;
+                    const last = rewardHistory.value.slice(-50);
+                    return last.reduce((a, b) => a + b, 0) / last.length;
+                });
+
+                function computeMetrics() {
+                    const d = params.value.diameter;
+                    const t = params.value.strutThickness;
+                    const n = params.value.numStruts;
+                    const h = params.value.crownHeight;
+
+                    const optT = 0.12, optD = 10.0, optN = 12;
+                    const thicknessFactor = Math.pow(optT / Math.max(t, 0.05), 1.5);
+                    const diameterFactor = Math.pow(optD / Math.max(d, 5), 0.5);
+                    const strutFactor = Math.pow(optN / Math.max(n, 6), 0.8);
+                    const crownFactor = 1.0 + 0.3 * Math.abs(h - 1.0);
+
+                    const stress = 100 * thicknessFactor * diameterFactor * strutFactor * crownFactor;
+                    const displacement = 0.3 * (params.value.length / 20) * (optT / Math.max(t, 0.05));
+
+                    metrics.value.stress = Math.max(50, Math.min(400, stress));
+                    metrics.value.displacement = Math.max(0.1, Math.min(2, displacement));
+
+                    currentReward.value = -0.4 * (metrics.value.stress / 200) - 0.2 * metrics.value.displacement;
+                    return currentReward.value;
+                }
+
+                async function trainAgent() {
+                    // Check if using real RL
+                    if (useRealRL.value) {
+                        const connected = await checkBackend();
+                        if (!connected) {
+                            alert('Backend not running! Start it with: python rl_backend.py');
+                            return;
+                        }
+
+                        // Start real RL training via backend
+                        try {
+                            await fetch(`${backendUrl}/reset`, { method: 'POST' });
+                            const res = await fetch(`${backendUrl}/start`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ steps: trainSteps.value })
+                            });
+                            const data = await res.json();
+                            if (data.status === 'started') {
+                                training.value = true;
+                                progress.value = 0;
+                                steps.value = 0;
+                                episodes.value = 0;
+                                rewardHistory.value = [];
+                                stressHistory.value = [];
+                                episodeRewards.value = [];
+                                startPolling();
+                            }
+                        } catch (e) {
+                            console.error('Failed to start training:', e);
+                            alert('Failed to start training. Check backend.');
+                        }
+                        return;
+                    }
+
+                    // Simulated RL (original code)
+                    training.value = true;
+                    progress.value = 0;
+                    let currentStep = 0;
+                    let episodeReward = 0;
+                    let episodeLength = 0;
+                    const totalSteps = trainSteps.value;
+
+                    // Track best params found (simulates learning)
+                    let bestReward = -Infinity;
+                    let bestParams = { ...params.value };
+                    let learningRate = 0.3;
+
+                    trainingInterval = setInterval(() => {
+                        const exploitProb = Math.min(0.8, learningRate + (currentStep / totalSteps) * 0.5);
+                        const explore = Math.random() > exploitProb;
+
+                        if (explore || bestReward === -Infinity) {
+                            params.value.diameter = Math.max(6, Math.min(14, params.value.diameter + (Math.random() - 0.5) * 1.5));
+                            params.value.strutThickness = Math.max(0.05, Math.min(0.2, params.value.strutThickness + (Math.random() - 0.5) * 0.03));
+                            params.value.numStruts = Math.max(6, Math.min(18, Math.round(params.value.numStruts + (Math.random() - 0.5) * 4)));
+                            params.value.crownHeight = Math.max(0.5, Math.min(2.0, params.value.crownHeight + (Math.random() - 0.5) * 0.3));
+                        } else {
+                            params.value.diameter = Math.max(6, Math.min(14, bestParams.diameter + (Math.random() - 0.5) * 0.4));
+                            params.value.strutThickness = Math.max(0.05, Math.min(0.2, bestParams.strutThickness + (Math.random() - 0.5) * 0.008));
+                            params.value.numStruts = Math.max(6, Math.min(18, Math.round(bestParams.numStruts + (Math.random() - 0.5) * 1)));
+                            params.value.crownHeight = Math.max(0.5, Math.min(2.0, bestParams.crownHeight + (Math.random() - 0.5) * 0.08));
+                        }
+
+                        const reward = computeMetrics();
+
+                        if (reward > bestReward) {
+                            bestReward = reward;
+                            bestParams = { ...params.value };
+                        }
+
+                        episodeReward += reward;
+                        episodeLength++;
+                        steps.value++;
+                        currentStep++;
+                        progress.value = currentStep / totalSteps;
+
+                        rewardHistory.value.push(reward);
+                        stressHistory.value.push(metrics.value.stress);
+
+                        if (episodeLength >= 50) {
+                            episodeRewards.value.push(episodeReward);
+                            episodes.value++;
+                            episodeReward = 0;
+                            episodeLength = 0;
+                        }
+
+                        if (currentStep % 5 === 0) {
+                            updateStent3D();
+                            updateCharts();
+                        }
+
+                        if (currentStep >= totalSteps) {
+                            clearInterval(trainingInterval);
+                            trainingInterval = null;
+                            training.value = false;
+                            trainedPolicy.value = { ...bestParams };
+                            params.value = { ...bestParams };
+                            comparisonEpisodes.value = Math.min(episodes.value, 30);
+                            computeMetrics();
+                            updateStent3D();
+                            updateCharts();
+                        }
+                    }, 10);
+                }
+
+                async function stopTraining() {
+                    // Stop real RL if running
+                    if (useRealRL.value) {
+                        stopPolling();
+                        try {
+                            await fetch(`${backendUrl}/stop`, { method: 'POST' });
+                        } catch (e) { }
+                    }
+
+                    if (trainingInterval) {
+                        clearInterval(trainingInterval);
+                        trainingInterval = null;
+                    }
+                    training.value = false;
+                    trainedPolicy.value = { ...params.value };
+                    if (episodes.value > 0) {
+                        comparisonEpisodes.value = Math.min(episodes.value, 30);
+                    }
+                    updateStent3D();
+                    updateCharts();
+                }
+
+                function resetEnv() {
+                    params.value = { diameter: 10.0, length: 20.0, strutThickness: 0.12, numStruts: 12, crownHeight: 1.0 };
+                    metrics.value = { stress: 150, displacement: 0.5 };
+                    episodeRewards.value = [];
+                    stressHistory.value = [];
+                    rewardHistory.value = [];
+                    episodes.value = 0;
+                    steps.value = 0;
+                    progress.value = 0;
+                    comparisonDone.value = false;
+                    trainedPolicy.value = null;
+                    computeMetrics();
+                    updateStent3D();
+                    updateCharts();
+                }
+
+                function runComparison() {
+                    comparing.value = true;
+                    comparisonProgress.value = 0;
+                    comparisonPhase.value = 'Running Random Baseline';
+                    comparisonDone.value = false;
+                    randomRewards.value = [];
+
+                    // Use ALREADY COLLECTED rewards from training
+                    const numEpisodes = Math.min(comparisonEpisodes.value, 50); // Cap at 50 for speed
+                    trainedRewards.value = episodeRewards.value.slice(-numEpisodes);
+
+                    // Pad if needed
+                    if (trainedRewards.value.length < numEpisodes && trainedRewards.value.length > 0) {
+                        const original = [...trainedRewards.value];
+                        while (trainedRewards.value.length < numEpisodes) {
+                            trainedRewards.value.push(original[trainedRewards.value.length % original.length]);
+                        }
+                    }
+
+                    const stepsPerEpisode = 50;
+                    const totalSteps = numEpisodes * stepsPerEpisode;
+                    let currentEpisode = 0;
+                    let currentStep = 0;
+                    let episodeReward = 0;
+
+                    const savedParams = { ...params.value };
+
+                    // Run simulation in batches for smoother progress
+                    const batchSize = 10; // Steps per tick
+
+                    const comparisonInterval = setInterval(() => {
+                        for (let b = 0; b < batchSize && currentEpisode < numEpisodes; b++) {
+                            params.value.diameter = 6 + Math.random() * 8;
+                            params.value.strutThickness = 0.05 + Math.random() * 0.15;
+                            params.value.numStruts = Math.round(6 + Math.random() * 12);
+                            params.value.crownHeight = 0.5 + Math.random() * 1.5;
+
+                            const reward = computeMetrics();
+                            episodeReward += reward;
+                            currentStep++;
+
+                            if (currentStep >= stepsPerEpisode) {
+                                randomRewards.value.push(episodeReward);
+                                currentEpisode++;
+                                currentStep = 0;
+                                episodeReward = 0;
+                            }
+                        }
+
+                        // Update progress (0-90% for simulation)
+                        comparisonProgress.value = (currentEpisode / numEpisodes) * 0.9;
+
+                        if (currentEpisode >= numEpisodes) {
+                            clearInterval(comparisonInterval);
+
+                            // Quick finalization
+                            comparisonPhase.value = 'Finalizing';
+                            comparisonProgress.value = 0.95;
+
+                            // Calculate stats immediately
+                            randomMean.value = randomRewards.value.reduce((a, b) => a + b, 0) / randomRewards.value.length;
+                            trainedMean.value = trainedRewards.value.reduce((a, b) => a + b, 0) / trainedRewards.value.length;
+                            improvement.value = ((trainedMean.value - randomMean.value) / Math.abs(randomMean.value)) * 100;
+
+                            // Restore params
+                            params.value = savedParams;
+                            computeMetrics();
+                            updateStent3D();
+
+                            comparisonProgress.value = 1;
+                            comparisonPhase.value = 'Complete';
+
+                            // Render charts and show results
+                            requestAnimationFrame(() => {
+                                updateComparisonCharts();
+                                comparing.value = false;
+                                comparisonDone.value = true;
+                            });
+                        }
+                    }, 16); // ~60fps
+                }
+
+                function updateComparisonCharts() {
+                    // Calculate statistics
+                    const randomStd = Math.sqrt(randomRewards.value.reduce((s, v) => s + Math.pow(v - randomMean.value, 2), 0) / randomRewards.value.length);
+                    const trainedStd = Math.sqrt(trainedRewards.value.reduce((s, v) => s + Math.pow(v - trainedMean.value, 2), 0) / trainedRewards.value.length);
+
+                    // Calculate axis range to show both distributions clearly
+                    const allRewards = [...randomRewards.value, ...trainedRewards.value];
+                    const minReward = Math.min(...allRewards);
+                    const maxReward = Math.max(...allRewards);
+                    const padding = (maxReward - minReward) * 0.15;
+                    const yMin = minReward - padding;
+                    const yMax = maxReward + padding;
+
+                    // Box plot - matplotlib style with proper scaling
+                    Plotly.react('boxplot-chart', [{
+                        y: randomRewards.value,
+                        type: 'box',
+                        name: 'Random',
+                        marker: { color: '#4169e1', size: 6, outliercolor: '#4169e1' },
+                        line: { color: '#2a4a9e', width: 1.5 },
+                        fillcolor: 'rgba(65,105,225,0.4)',
+                        boxmean: 'sd',
+                        whiskerwidth: 0.7,
+                        boxpoints: 'outliers'
+                    }, {
+                        y: trainedRewards.value,
+                        type: 'box',
+                        name: 'RL Agent',
+                        marker: { color: '#ff8c00', size: 6, outliercolor: '#ff8c00' },
+                        line: { color: '#cc7000', width: 1.5 },
+                        fillcolor: 'rgba(255,140,0,0.4)',
+                        boxmean: 'sd',
+                        whiskerwidth: 0.7,
+                        boxpoints: 'outliers'
+                    }], {
+                        margin: { l: 70, r: 30, t: 50, b: 60 },
+                        title: { text: 'Performance Comparison', font: { size: 14, family: 'SF Mono, monospace', color: '#333' } },
+                        yaxis: {
+                            title: { text: 'Episode Reward', font: { size: 12 } },
+                            gridcolor: 'rgba(0,0,0,0.15)',
+                            gridwidth: 1,
+                            zeroline: true,
+                            zerolinecolor: 'rgba(0,0,0,0.3)',
+                            tickfont: { size: 11 },
+                            range: [yMin, yMax]
+                        },
+                        xaxis: {
+                            tickfont: { size: 12 }
+                        },
+                        paper_bgcolor: 'white',
+                        plot_bgcolor: '#fafafa',
+                        showlegend: true,
+                        legend: { x: 0.02, y: 0.98, font: { size: 11 } },
+                        annotations: [{
+                            x: 0.5, y: 1.08, xref: 'paper', yref: 'paper',
+                            text: `Random: ${randomMean.value.toFixed(1)} ± ${randomStd.toFixed(1)} | RL: ${trainedMean.value.toFixed(1)} ± ${trainedStd.toFixed(1)}`,
+                            showarrow: false, font: { size: 11, color: '#555' }
+                        }]
+                    }, { responsive: true });
+
+                    // Histogram - with proper bin calculation
+                    const binSize = (maxReward - minReward) / 15;
+
+                    Plotly.react('histogram-chart', [{
+                        x: randomRewards.value,
+                        type: 'histogram',
+                        name: 'Random',
+                        opacity: 0.65,
+                        marker: {
+                            color: '#4169e1',
+                            line: { color: '#2a4a9e', width: 1 }
+                        },
+                        xbins: { start: minReward, end: maxReward, size: binSize }
+                    }, {
+                        x: trainedRewards.value,
+                        type: 'histogram',
+                        name: 'RL Agent',
+                        opacity: 0.65,
+                        marker: {
+                            color: '#ff8c00',
+                            line: { color: '#cc7000', width: 1 }
+                        },
+                        xbins: { start: minReward, end: maxReward, size: binSize }
+                    }], {
+                        margin: { l: 60, r: 30, t: 50, b: 60 },
+                        title: { text: 'Reward Distribution', font: { size: 14, family: 'SF Mono, monospace', color: '#333' } },
+                        xaxis: {
+                            title: { text: 'Episode Reward', font: { size: 12 } },
+                            gridcolor: 'rgba(0,0,0,0.15)',
+                            gridwidth: 1,
+                            zeroline: false,
+                            tickfont: { size: 11 },
+                            range: [yMin, yMax]
+                        },
+                        yaxis: {
+                            title: { text: 'Count', font: { size: 12 } },
+                            gridcolor: 'rgba(0,0,0,0.15)',
+                            gridwidth: 1,
+                            zeroline: true,
+                            tickfont: { size: 11 }
+                        },
+                        barmode: 'overlay',
+                        paper_bgcolor: 'white',
+                        plot_bgcolor: '#fafafa',
+                        legend: {
+                            x: 0.98, y: 0.98,
+                            xanchor: 'right',
+                            bgcolor: 'rgba(255,255,255,0.9)',
+                            bordercolor: '#ddd',
+                            borderwidth: 1,
+                            font: { size: 11 }
+                        }
+                    }, { responsive: true });
+                }
+
+                function updateStent3D() {
+                    const r = params.value.diameter / 2;
+                    const L = params.value.length;
+                    const n = params.value.numStruts;
+                    const t = params.value.strutThickness;
+
+                    const theta = Array.from({ length: 40 }, (_, i) => 2 * Math.PI * i / 39);
+                    // Stent lying horizontal: length along X axis, circular cross-section in Y-Z plane
+                    const x = [], y = [], z = [];
+
+                    for (let xi = 0; xi <= 15; xi++) {
+                        const xVal = (xi / 15) * L;
+                        x.push(theta.map(() => xVal));
+                        y.push(theta.map(t => r * Math.cos(t)));
+                        z.push(theta.map(t => r * Math.sin(t)));
+                    }
+
+                    const traces = [{
+                        type: 'surface', x, y, z,
+                        colorscale: [[0, 'rgba(70,130,180,0.3)'], [1, 'rgba(70,130,180,0.3)']],
+                        showscale: false, hoverinfo: 'skip'
+                    }];
+
+                    // Struts along the length
+                    for (let i = 0; i < n; i++) {
+                        const angle = 2 * Math.PI * i / n;
+                        const sr = r + t / 2;
+                        const sx = Array.from({ length: 25 }, (_, j) => j / 24 * L);
+                        traces.push({
+                            type: 'scatter3d', mode: 'lines',
+                            x: sx,
+                            y: sx.map(() => sr * Math.cos(angle)),
+                            z: sx.map(() => sr * Math.sin(angle)),
+                            line: { color: '#8B0000', width: 5 },
+                            showlegend: false, hoverinfo: 'skip'
+                        });
+                    }
+
+                    Plotly.react('stent-3d', traces, {
+                        scene: {
+                            xaxis: { title: 'Length', range: [-2, L + 2], gridcolor: '#eee' },
+                            yaxis: { title: '', range: [-10, 10], gridcolor: '#eee', showticklabels: false },
+                            zaxis: { title: '', range: [-10, 10], gridcolor: '#eee', showticklabels: false },
+                            bgcolor: '#fafafa', aspectmode: 'manual',
+                            aspectratio: { x: L / 10, y: 1, z: 1 },
+                            camera: { eye: { x: 2, y: 1.8, z: 0.6 } }
+                        },
+                        paper_bgcolor: 'white', plot_bgcolor: 'white',
+                        margin: { l: 0, r: 0, t: 0, b: 0 },
+                        modebar: { orientation: 'h', bgcolor: 'rgba(255,255,255,0.8)' }
+                    }, { responsive: true, displayModeBar: true, modeBarButtonsToRemove: ['toImage', 'sendDataToCloud'] });
+                }
+
+                function updateCharts() {
+                    const totalStepsNow = rewardHistory.value.length;
+
+                    // Reward chart - x-axis grows with data
+                    const rewardTrace = {
+                        x: Array.from({ length: totalStepsNow }, (_, i) => i + 1),
+                        y: rewardHistory.value,
+                        type: 'scatter', mode: 'lines',
+                        line: { color: '#2563eb', width: 1.5 },
+                        fill: 'tozeroy', fillcolor: 'rgba(37, 99, 235, 0.1)'
+                    };
+
+                    const traces = [rewardTrace];
+                    if (totalStepsNow > 20) {
+                        const ma = [];
+                        for (let i = 19; i < totalStepsNow; i++) {
+                            ma.push(rewardHistory.value.slice(i - 19, i + 1).reduce((a, b) => a + b) / 20);
+                        }
+                        traces.push({
+                            x: Array.from({ length: ma.length }, (_, i) => i + 20),
+                            y: ma,
+                            type: 'scatter', mode: 'lines',
+                            line: { color: '#dc2626', width: 2, dash: 'dash' }
+                        });
+                    }
+
+                    Plotly.react('reward-chart', traces, {
+                        margin: { l: 50, r: 10, t: 10, b: 35 },
+                        xaxis: { title: 'Step', gridcolor: '#f0f0f0', range: [0, Math.max(100, totalStepsNow + 10)] },
+                        yaxis: { title: 'Reward', gridcolor: '#f0f0f0' },
+                        paper_bgcolor: 'white', plot_bgcolor: 'white',
+                        showlegend: false
+                    }, { responsive: true });
+
+                    // Stress chart - x-axis grows with data
+                    Plotly.react('stress-chart', [{
+                        x: Array.from({ length: totalStepsNow }, (_, i) => i + 1),
+                        y: stressHistory.value,
+                        type: 'scatter', mode: 'lines',
+                        line: { color: '#dc2626', width: 1.5 }
+                    }, {
+                        x: [0, Math.max(100, totalStepsNow + 10)],
+                        y: [150, 150],
+                        type: 'scatter', mode: 'lines',
+                        line: { color: '#9ca3af', width: 1, dash: 'dot' }
+                    }], {
+                        margin: { l: 50, r: 10, t: 10, b: 35 },
+                        xaxis: { title: 'Step', gridcolor: '#f0f0f0', range: [0, Math.max(100, totalStepsNow + 10)] },
+                        yaxis: { title: 'MPa', gridcolor: '#f0f0f0' },
+                        paper_bgcolor: 'white', plot_bgcolor: 'white',
+                        showlegend: false
+                    }, { responsive: true });
+                }
+
+                watch(params, () => {
+                    if (!training.value) {
+                        computeMetrics();
+                        updateStent3D();
+                    }
+                }, { deep: true });
+
+                onMounted(() => {
+                    computeMetrics();
+                    updateStent3D();
+                    updateCharts();
+                    // Check backend connection periodically
+                    checkBackend();
+                    setInterval(checkBackend, 5000);
+                });
+
+                return {
+                    params, metrics, currentReward, episodeRewards,
+                    episodes, steps, avgReward, training, progress, trainSteps,
+                    trainAgent, stopTraining, resetEnv,
+                    // Real RL
+                    useRealRL, backendConnected,
+                    // 4C Docker Mode
+                    useDocker, dockerAvailable, show4CViewer,
+                    // Comparison
+                    comparing, comparisonDone, comparisonEpisodes,
+                    randomMean, trainedMean, improvement,
+                    comparisonProgress, comparisonPhase,
+                    runComparison
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+
+</html>

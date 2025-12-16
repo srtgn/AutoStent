@@ -1,8 +1,8 @@
 # Frontend static site with Nginx
 FROM nginx:alpine
 
-# Copy frontend files
-COPY web_app_react/index.html /usr/share/nginx/html/index.html
+# Copy frontend files (index.html is in this directory)
+COPY index.html /usr/share/nginx/html/index.html
 
 # Custom nginx config for SPA
 RUN echo 'server { \
