@@ -43,6 +43,8 @@ class StentDesignEnv(gym.Env):
         render_mode: Optional[str] = None,
         max_episode_steps: int = 50,
         reward_weights: Optional[Dict[str, float]] = None,
+        mock_simulation: bool = False,
+        use_docker: bool = False,
     ):
         """
         Initialize environment.
@@ -53,8 +55,13 @@ class StentDesignEnv(gym.Env):
             render_mode: Rendering mode
             max_episode_steps: Maximum steps per episode
             reward_weights: Weights for reward components
+            mock_simulation: If True, use fake physics results instead of running solver
+            use_docker: If True, run simulations in Docker container
         """
         super().__init__()
+        
+        self.mock_simulation = mock_simulation
+        self.use_docker = use_docker
         
         self.render_mode = render_mode
         self.max_episode_steps = max_episode_steps
@@ -69,7 +76,11 @@ class StentDesignEnv(gym.Env):
         self.working_dir.mkdir(parents=True, exist_ok=True)
         
         # Initialize components
-        self.simulator = FourCSimulator(fourc_executable=fourc_executable)
+        self.simulator = FourCSimulator(
+            fourc_executable=fourc_executable,
+            use_docker=use_docker,
+            working_directory=self.working_dir,
+        )
         self.yaml_generator = FourCYAMLGenerator()
         
         # Observation and action spaces
@@ -193,17 +204,33 @@ class StentDesignEnv(gym.Env):
         )
         
         # Run simulation
-        output_dir = self.working_dir / f"output_{self.current_step:04d}"
-        config = SimulationConfig(
-            yaml_input_path=yaml_path,
-            output_directory=output_dir,
-            timeout=600.0,
-        )
-        
-        self.last_result = self.simulator.run_simulation(config)
+        if self.mock_simulation:
+            # Generate fake successful result
+            # Random valid metrics roughly in realistic range
+            self.last_result = SimulationResult(
+                success=True,
+                output_directory=self.working_dir,
+                max_von_mises_stress=np.random.uniform(200, 500),  # MPa
+                max_displacement=np.random.uniform(0.01, 0.1),     # mm
+                max_principal_strain=np.random.uniform(0.01, 0.05), # unitless
+                converged=True,
+                num_iterations=5,
+                residual_norm=1e-6,
+                metadata={"mock": True}
+            )
+        else:
+            output_dir = self.working_dir / f"output_{self.current_step:04d}"
+            config = SimulationConfig(
+                yaml_input_path=yaml_path,
+                output_directory=output_dir,
+                timeout=600.0,
+            )
+            
+            self.last_result = self.simulator.run_simulation(config)
         
         # Compute reward
         if not self.last_result.success:
+            print(f"Simulation failed: {self.last_result.error_message}")
             reward = -100.0
             terminated = True
         else:
@@ -303,4 +330,5 @@ class StentDesignEnv(gym.Env):
         # if self.working_dir.exists():
         #     shutil.rmtree(self.working_dir)
         pass
+
 

@@ -65,3 +65,4 @@ def compute_biomechanical_metrics(
         "safety_factor": safety_factor,
     }
 
+

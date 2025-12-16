@@ -242,3 +242,4 @@ class SplineStentGeometry:
         self._control_points = mutated
         return mutated
 
+

@@ -1,0 +1,13 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "railway/Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+startCommand = "python api_server.py"
+restartPolicyType = "on_failure"
+
+[env]
+PORT = "8080"
+PYTHONUNBUFFERED = "1"

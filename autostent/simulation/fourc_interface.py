@@ -85,13 +85,19 @@ class FourCSimulator:
     - Parsing simulation results
     - Error handling and validation
     - Logging and metadata tracking
+    
+    Supports both local executable and Docker-based execution.
     """
+    
+    DOCKER_IMAGE = "ghcr.io/4c-multiphysics/4c:main"
+    DOCKER_FOURC_PATH = "/home/user/4C/build/4C"
     
     def __init__(
         self,
         fourc_executable: Optional[str] = None,
         working_directory: Optional[Path] = None,
         default_timeout: float = 600.0,
+        use_docker: bool = False,
     ):
         """
         Initialize 4C simulator.
@@ -100,7 +106,9 @@ class FourCSimulator:
             fourc_executable: Path to 4C executable (searches PATH if None)
             working_directory: Default working directory for simulations
             default_timeout: Default timeout for simulations (seconds)
+            use_docker: If True, run simulations in Docker container
         """
+        self.use_docker = use_docker
         self.fourc_executable = fourc_executable or self._find_fourc_executable()
         self.working_directory = working_directory or Path.cwd()
         self.default_timeout = default_timeout
@@ -162,13 +170,31 @@ class FourCSimulator:
         # Create output directory
         config.output_directory.mkdir(parents=True, exist_ok=True)
         
-        # Prepare command
-        cmd = [
-            self.fourc_executable,
-            str(config.yaml_input_path),
-            "-o",
-            str(config.output_directory),
-        ]
+        # Prepare command based on execution mode
+        if self.use_docker:
+            # Docker execution - mount working directory
+            work_dir_abs = self.working_directory.resolve()
+            yaml_rel = config.yaml_input_path.resolve().relative_to(work_dir_abs)
+            output_rel = config.output_directory.resolve().relative_to(work_dir_abs)
+            
+            cmd = [
+                "docker", "run", "--rm",
+                "--platform", "linux/amd64",  # Required for Apple Silicon
+                "-v", f"{work_dir_abs}:/workspace",
+                "-w", "/workspace",
+                self.DOCKER_IMAGE,
+                self.DOCKER_FOURC_PATH,
+                str(yaml_rel),
+                "-o", str(output_rel),
+            ]
+        else:
+            # Local execution
+            cmd = [
+                self.fourc_executable,
+                str(config.yaml_input_path),
+                "-o",
+                str(config.output_directory),
+            ]
         
         if config.verbose:
             cmd.append("-v")
@@ -296,4 +322,5 @@ class FourCSimulator:
             error_message=data.get("error_message"),
             metadata=data.get("metadata", {}),
         )
+
 

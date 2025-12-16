@@ -47,7 +47,8 @@ def export_to_4c_mesh(
     
     for strut_points in points:
         # Create tube around centerline
-        tube = pv.Tube(strut_points, radius=geometry.params.strut_width / 2)
+        path = pv.Spline(strut_points, n_points=len(strut_points))
+        tube = path.tube(radius=geometry.params.strut_width / 2)
         if mesh.n_points == 0:
             mesh = tube
         else:
@@ -74,4 +75,5 @@ def export_to_4c_mesh(
     mesh.save(str(output_path))
     
     return output_path
+
 
