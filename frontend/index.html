@@ -155,9 +155,6 @@
                         <input type="checkbox" v-model="useDocker" :disabled="training" class="w-4 h-4 accent-blue-600">
                         <span class="text-sm font-medium text-gray-700">4C Solver (Cloud)</span>
                     </label>
-                    <span v-if="useDocker && fourcStatus === 'checking'" class="text-xs text-gray-500">checking...</span>
-                    <span v-if="useDocker && fourcStatus === 'available'" class="text-xs text-green-600 font-medium">✓ Ready</span>
-                    <span v-if="useDocker && fourcStatus === 'unavailable'" class="text-xs text-red-500 font-medium">✗ Unavailable</span>
                 </div>
 
                 <!-- RL Toggle -->
@@ -167,8 +164,6 @@
                             class="w-4 h-4 accent-green-600">
                         <span class="text-sm font-medium text-gray-700">RL (PPO)</span>
                     </label>
-                    <span v-if="useRealRL && !backendConnected" class="text-xs text-red-500 font-medium">Offline</span>
-                    <span v-if="useRealRL && backendConnected" class="text-xs text-green-600 font-medium">Online</span>
                 </div>
             </div>
         </header>
@@ -409,6 +404,7 @@
                 const currentReward = ref(0);
                 const episodeRewards = ref([]);
                 const stressHistory = ref([]);
+                const displacementHistory = ref([]);
                 const rewardHistory = ref([]);
                 
                 // Computed: Use last reward from backend history if available, else 0
@@ -440,12 +436,14 @@
                 
                 // Computed: Display displacement from training results, or 0 if no training
                 const displayedDisplacement = computed(() => {
-                    // Displacement isn't tracked separately, derive from stress if needed
-                    // For now, return 0 when no training
-                    if (training.value && stressHistory.value.length > 0) {
-                        // Could calculate from stress, but for simplicity return 0
-                        return 0;
+                    if (training.value && displacementHistory.value.length > 0) {
+                        // During training, use the last displacement from backend
+                        return displacementHistory.value[displacementHistory.value.length - 1];
+                    } else if (displacementHistory.value.length > 0) {
+                        // After training, show last displacement
+                        return displacementHistory.value[displacementHistory.value.length - 1];
                     } else {
+                        // No training done - show 0
                         return 0;
                     }
                 });
@@ -581,6 +579,9 @@
                                 }
                                 if (data.stress_history !== undefined) {
                                     stressHistory.value = data.stress_history;
+                                }
+                                if (data.displacement_history !== undefined) {
+                                    displacementHistory.value = data.displacement_history;
                                 }
                                 if (data.episode_rewards !== undefined) {
                                     episodeRewards.value = data.episode_rewards;
@@ -835,6 +836,7 @@
                     currentReward.value = 0;  // Reset to 0
                     episodeRewards.value = [];
                     stressHistory.value = [];
+                    displacementHistory.value = [];
                     rewardHistory.value = [];
                     episodes.value = 0;
                     steps.value = 0;
@@ -1117,12 +1119,24 @@
                 }
 
                 function updateCharts() {
-                    const totalStepsNow = rewardHistory.value.length;
+                    // Use steps.value (from backend) for x-axis to match the steps counter
+                    // Backend logs every 2 steps, so rewardHistory might be shorter
+                    const totalStepsNow = steps.value || rewardHistory.value.length;
+                    const rewardDataLength = rewardHistory.value.length;
+                    
+                    // Pad reward history with last value if needed to match step count
+                    let paddedRewards = [...rewardHistory.value];
+                    if (paddedRewards.length > 0 && totalStepsNow > rewardDataLength) {
+                        const lastReward = paddedRewards[paddedRewards.length - 1];
+                        while (paddedRewards.length < totalStepsNow) {
+                            paddedRewards.push(lastReward);
+                        }
+                    }
 
-                    // Reward chart - x-axis grows with data
+                    // Reward chart - x-axis matches steps counter
                     const rewardTrace = {
                         x: Array.from({ length: totalStepsNow }, (_, i) => i + 1),
-                        y: rewardHistory.value,
+                        y: paddedRewards,
                         type: 'scatter', mode: 'lines',
                         line: { color: '#2563eb', width: 1.5 },
                         fill: 'tozeroy', fillcolor: 'rgba(37, 99, 235, 0.1)'
@@ -1132,7 +1146,7 @@
                     if (totalStepsNow > 20) {
                         const ma = [];
                         for (let i = 19; i < totalStepsNow; i++) {
-                            ma.push(rewardHistory.value.slice(i - 19, i + 1).reduce((a, b) => a + b) / 20);
+                            ma.push(paddedRewards.slice(i - 19, i + 1).reduce((a, b) => a + b) / 20);
                         }
                         traces.push({
                             x: Array.from({ length: ma.length }, (_, i) => i + 20),
@@ -1150,10 +1164,18 @@
                         showlegend: false
                     }, { responsive: true });
 
-                    // Stress chart - x-axis grows with data
+                    // Stress chart - x-axis matches steps counter
+                    let paddedStress = [...stressHistory.value];
+                    if (paddedStress.length > 0 && totalStepsNow > paddedStress.length) {
+                        const lastStress = paddedStress[paddedStress.length - 1];
+                        while (paddedStress.length < totalStepsNow) {
+                            paddedStress.push(lastStress);
+                        }
+                    }
+                    
                     Plotly.react('stress-chart', [{
                         x: Array.from({ length: totalStepsNow }, (_, i) => i + 1),
-                        y: stressHistory.value,
+                        y: paddedStress,
                         type: 'scatter', mode: 'lines',
                         line: { color: '#dc2626', width: 1.5 }
                     }, {

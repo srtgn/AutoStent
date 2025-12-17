@@ -206,6 +206,7 @@ training_state = {
     "best_reward": -100.0,
     "rewards": [],
     "stress_history": [],
+    "displacement_history": [],
     "episode_rewards": [],
 }
 
@@ -309,10 +310,13 @@ if SB3_AVAILABLE:
             # Reward calculation
             reward = -0.4 * (stress / 200) - 0.2 * displacement
             
+            # Store displacement for callback
+            self.last_displacement = displacement
+            
             self.step_count += 1
             done = self.step_count >= self.max_episode_steps
             
-            return self._get_obs(), reward, done, False, {'parameters': self.params.copy(), 'stress': stress}
+            return self._get_obs(), reward, done, False, {'parameters': self.params.copy(), 'stress': stress, 'displacement': displacement}
 
     class TrainingCallback(BaseCallback):
         def __init__(self, total_steps):
@@ -335,7 +339,7 @@ if SB3_AVAILABLE:
                         env = self.model.env.envs[0].unwrapped
                         if hasattr(env, 'params'):
                             training_state["current_params"] = dict(env.params)
-                            # Get real stress if available, else formula
+                            # Get real stress and displacement if available, else formula
                             if hasattr(env, 'last_stress'): 
                                 stress = env.last_stress
                             else:
@@ -343,6 +347,15 @@ if SB3_AVAILABLE:
                                 d, t, n = env.params['diameter'], env.params['strut_thickness'], env.params['num_struts']
                                 stress = 100 * (0.12 / max(t, 0.05))**1.5 * (10.0 / max(d, 5))**0.5 * (12 / max(n, 6))**0.8
                             training_state["stress_history"].append(float(stress))
+                            
+                            # Get displacement
+                            if hasattr(env, 'last_displacement'):
+                                displacement = env.last_displacement
+                            else:
+                                # Calculate from formula
+                                d, t = env.params['diameter'], env.params['strut_thickness']
+                                displacement = 0.3 * (env.params['length'] / 20) * (0.12 / max(t, 0.05))
+                            training_state["displacement_history"].append(float(displacement))
                     except Exception as e:
                         # print(f"Callback error: {e}")
                         pass
@@ -372,6 +385,7 @@ if SB3_AVAILABLE:
             training_state["episodes"] = 0
             training_state["rewards"] = []
             training_state["stress_history"] = []
+            training_state["displacement_history"] = []
             training_state["episode_rewards"] = []
             training_state["best_reward"] = -100.0
         
@@ -797,6 +811,7 @@ def get_rl_status():
             "best_reward": float(training_state["best_reward"]),
             "rewards": [float(x) for x in training_state["rewards"]],  # Send ALL rewards
             "stress_history": [float(x) for x in training_state["stress_history"]],  # Send ALL
+            "displacement_history": [float(x) for x in training_state["displacement_history"]],  # Send ALL
             "episode_rewards": [float(x) for x in training_state["episode_rewards"]],  # Send ALL
             "sb3_available": bool(SB3_AVAILABLE),
             "fourc_available": bool(FOURC_AVAILABLE),
@@ -857,6 +872,7 @@ def reset_training():
         training_state["episodes"] = 0
         training_state["rewards"] = []
         training_state["stress_history"] = []
+        training_state["displacement_history"] = []
         training_state["episode_rewards"] = []
         training_state["best_reward"] = -100.0
     return {"status": "reset"}
