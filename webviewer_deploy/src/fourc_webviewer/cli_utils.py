@@ -7,7 +7,9 @@ import fourc_webviewer.run_webserver as webserver
 
 def main():
     """Get the CLI arguments and start the webviewer."""
+    print("CLI Main Entry Point", flush=True)
     arguments = get_arguments()
+    print(f"Arguments: {arguments}", flush=True)
     webserver.run_webviewer(**arguments)
 
 
