@@ -590,10 +590,14 @@ STRUCTURAL DYNAMIC:
 
 MATERIALS:
   - MAT: 1
-    MAT_Struct_StVenantKirchhoff:
+    MAT_Struct_PlasticNlnLogNeoHooke:
       YOUNG: 200000.0
       NUE: 0.3
-      DENS: 6.45e-9
+      DENS: 7.8e-9
+      YIELD: 500.0
+      SATHARDENING: 1000.0
+      HARDEXPO: 5.0
+      VISC: 0.0
 
 # NOTE: This YAML is incomplete - 4C requires geometry/mesh
 # Without mesh tools, 4C cannot run. Using analytical fallback in code.
@@ -671,10 +675,14 @@ STRUCTURAL DYNAMIC:
 
 MATERIALS:
   - MAT: 1
-    MAT_Struct_StVenantKirchhoff:
+    MAT_Struct_PlasticNlnLogNeoHooke:
       YOUNG: 200000.0
       NUE: 0.3
-      DENS: 6.45e-9
+      DENS: 7.8e-9
+      YIELD: 500.0
+      SATHARDENING: 1000.0
+      HARDEXPO: 5.0
+      VISC: 0.0
 
 """)
         
@@ -1094,9 +1102,14 @@ STRUCTURAL DYNAMIC:
   NUMSTEP: 1
 MATERIALS:
   - MAT: 1
-    MAT_Struct_StVenantKirchhoff:
+    MAT_Struct_PlasticNlnLogNeoHooke:
       YOUNG: 200000.0
       NUE: 0.3
+      DENS: 7.8e-9
+      YIELD: 500.0
+      SATHARDENING: 1000.0
+      HARDEXPO: 5.0
+      VISC: 0.0
 """)
             tutorial_yaml = test_yaml
             print("Created minimal test YAML")
