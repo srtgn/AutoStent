@@ -108,14 +108,18 @@ training_state = {
 # ===== STENT ENVIRONMENT FOR RL =====
 if SB3_AVAILABLE:
     class SimpleStentEnv(gym.Env):
-        """Fast stent environment for RL training"""
-        def __init__(self):
+        """Stent environment for RL training (supports Mockup and Real 4C)"""
+        def __init__(self, use_real_4c=False):
             super().__init__()
             self.observation_space = spaces.Box(low=0, high=1, shape=(12,), dtype=np.float32)
             self.action_space = spaces.Box(low=-1, high=1, shape=(7,), dtype=np.float32)
             self.max_episode_steps = 50
             self.step_count = 0
+            self.use_real_4c = use_real_4c and FOURC_AVAILABLE
             self.params = {'diameter': 10.0, 'strut_thickness': 0.12, 'num_struts': 12, 'crown_height': 1.0, 'length': 20.0}
+            
+            if self.use_real_4c:
+                print("Environment initialized with REAL 4C solver")
             
         def reset(self, seed=None, options=None):
             self.params = {'diameter': 10.0, 'strut_thickness': 0.12, 'num_struts': 12, 'crown_height': 1.0, 'length': 20.0}
@@ -134,14 +138,40 @@ if SB3_AVAILABLE:
             return np.clip(obs, 0, 1)
         
         def step(self, action):
+            # Update parameters
             self.params['diameter'] = np.clip(self.params['diameter'] + action[0] * 0.5, 6, 14)
             self.params['strut_thickness'] = np.clip(self.params['strut_thickness'] + action[1] * 0.01, 0.05, 0.2)
             self.params['num_struts'] = int(np.clip(self.params['num_struts'] + action[2] * 1, 6, 18))
             self.params['crown_height'] = np.clip(self.params['crown_height'] + action[3] * 0.1, 0.5, 2.0)
             
-            d, t, n = self.params['diameter'], self.params['strut_thickness'], self.params['num_struts']
-            stress = 100 * (0.12 / max(t, 0.05))**1.5 * (10.0 / max(d, 5))**0.5 * (12 / max(n, 6))**0.8
-            displacement = 0.3 * (self.params['length'] / 20) * (0.12 / max(t, 0.05))
+            # --- SIMULATION STEP ---
+            stress = 0.0
+            displacement = 0.0
+            
+            if self.use_real_4c:
+                # Run REAL 4C Simulation
+                try:
+                    p = StentParams(**self.params)
+                    result = run_real_4c_simulation(p)
+                    
+                    if result.get("success"):
+                        stress = result.get("max_von_mises_stress", 100.0)
+                        displacement = result.get("max_displacement", 0.0)
+                    else:
+                        # Simulation failed
+                        print(f"Env 4C Failed: {result.get('error')}")
+                        stress = 1000.0 # High penalty
+                        displacement = 10.0
+                except Exception as e:
+                    print(f"Env Exception: {e}")
+                    stress = 1000.0
+            else:
+                # Fast Mockup Calculation
+                d, t, n = self.params['diameter'], self.params['strut_thickness'], self.params['num_struts']
+                stress = 100 * (0.12 / max(t, 0.05))**1.5 * (10.0 / max(d, 5))**0.5 * (12 / max(n, 6))**0.8
+                displacement = 0.3 * (self.params['length'] / 20) * (0.12 / max(t, 0.05))
+
+            # Reward calculation
             reward = -0.4 * (stress / 200) - 0.2 * displacement
             
             self.step_count += 1
@@ -170,12 +200,16 @@ if SB3_AVAILABLE:
                         env = self.model.env.envs[0].unwrapped
                         if hasattr(env, 'params'):
                             training_state["current_params"] = dict(env.params)
-                            # Use same stress formula as in step()
-                            d, t, n = env.params['diameter'], env.params['strut_thickness'], env.params['num_struts']
-                            stress = 100 * (0.12 / max(t, 0.05))**1.5 * (10.0 / max(d, 5))**0.5 * (12 / max(n, 6))**0.8
+                            # Get real stress if available, else formula
+                            if hasattr(env, 'last_stress'): 
+                                stress = env.last_stress
+                            else:
+                                # Use same stress formula as in step()
+                                d, t, n = env.params['diameter'], env.params['strut_thickness'], env.params['num_struts']
+                                stress = 100 * (0.12 / max(t, 0.05))**1.5 * (10.0 / max(d, 5))**0.5 * (12 / max(n, 6))**0.8
                             training_state["stress_history"].append(float(stress))
                     except Exception as e:
-                        print(f"Callback error: {e}")
+                        # print(f"Callback error: {e}")
                         pass
             
             if self.locals.get('dones', [False])[0]:
@@ -193,7 +227,7 @@ if SB3_AVAILABLE:
                 self.ep_reward = 0
             return True
 
-    def run_training(total_steps):
+    def run_training(total_steps, use_real_4c=False):
         global training_state
         with state_lock:
             training_state["is_training"] = True
@@ -207,7 +241,7 @@ if SB3_AVAILABLE:
             training_state["best_reward"] = -100.0
         
         try:
-            env = SimpleStentEnv()
+            env = SimpleStentEnv(use_real_4c=use_real_4c)
             model = PPO("MlpPolicy", env, verbose=0, learning_rate=3e-4, 
                         n_steps=128, batch_size=64, n_epochs=5, gamma=0.99, device='cpu')
             callback = TrainingCallback(total_steps)
@@ -236,6 +270,7 @@ class SimulationRequest(BaseModel):
 
 class TrainRequest(BaseModel):
     steps: int = 2000
+    use_docker: bool = False
 
 
 # ===== SIMULATION ENDPOINTS =====
@@ -577,7 +612,7 @@ def start_training(request: TrainRequest):
         if training_state["is_training"]:
             return {"status": "already_running"}
     
-    thread = threading.Thread(target=run_training, args=(request.steps,), daemon=True)
+    thread = threading.Thread(target=run_training, args=(request.steps, request.use_docker), daemon=True)
     thread.start()
     return {"status": "started", "steps": request.steps}
 
