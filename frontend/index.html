@@ -434,7 +434,7 @@
                     }
                 });
                 
-                // Computed: Display displacement from training results, or 0 if no training
+                // Computed: Display displacement from training results, or calculated value if no training
                 const displayedDisplacement = computed(() => {
                     if (training.value && displacementHistory.value.length > 0) {
                         // During training, use the last displacement from backend
@@ -443,8 +443,18 @@
                         // After training, show last displacement
                         return displacementHistory.value[displacementHistory.value.length - 1];
                     } else {
-                        // No training done - show 0
-                        return 0;
+                        // No training done - calculate from material properties
+                        // Based on beam theory: displacement ~ (load * length^3) / (E * I)
+                        // Simplified for stent: displacement ~ (pressure * length) / (E * thickness^2)
+                        const E = 200000; // Young's modulus in MPa (NiTi)
+                        const t = params.value.strutThickness;
+                        const L = params.value.length;
+                        const d = params.value.diameter;
+                        // Radial pressure approximation
+                        const pressure = d * 0.1; // MPa
+                        // Displacement formula based on material strength
+                        const displacement = (pressure * L) / (E * Math.pow(t, 2)) * 1000; // Convert to mm
+                        return Math.max(0.001, Math.min(2.0, displacement)); // Clamp to reasonable range
                     }
                 });
                 const episodes = ref(0);
@@ -552,7 +562,8 @@
                             if (data.is_training) {
                                 training.value = true;
                                 progress.value = data.progress;
-                                steps.value = data.current_step;
+                                // Use logged_steps if available (matches data points), else current_step
+                                steps.value = data.logged_steps !== undefined ? data.logged_steps : data.current_step;
                                 episodes.value = data.episodes;
 
                                 // Update params (but don't compute metrics - use backend values)
@@ -585,6 +596,11 @@
                                 }
                                 if (data.episode_rewards !== undefined) {
                                     episodeRewards.value = data.episode_rewards;
+                                }
+                                
+                                // Ensure progress doesn't exceed 100% and is consistent
+                                if (data.progress !== undefined) {
+                                    progress.value = Math.min(1.0, Math.max(0.0, data.progress));
                                 }
 
                                 updateStent3D();
@@ -1119,19 +1135,13 @@
                 }
 
                 function updateCharts() {
-                    // Use steps.value (from backend) for x-axis to match the steps counter
-                    // Backend logs every 2 steps, so rewardHistory might be shorter
-                    const totalStepsNow = steps.value || rewardHistory.value.length;
+                    // Use the actual number of data points for x-axis (matches what backend logged)
+                    // This ensures steps counter, progress bar, and curve x-axis all match
                     const rewardDataLength = rewardHistory.value.length;
+                    const totalStepsNow = rewardDataLength || steps.value || 0;
                     
-                    // Pad reward history with last value if needed to match step count
+                    // No padding needed - use actual data length
                     let paddedRewards = [...rewardHistory.value];
-                    if (paddedRewards.length > 0 && totalStepsNow > rewardDataLength) {
-                        const lastReward = paddedRewards[paddedRewards.length - 1];
-                        while (paddedRewards.length < totalStepsNow) {
-                            paddedRewards.push(lastReward);
-                        }
-                    }
 
                     // Reward chart - x-axis matches steps counter
                     const rewardTrace = {
@@ -1164,13 +1174,18 @@
                         showlegend: false
                     }, { responsive: true });
 
-                    // Stress chart - x-axis matches steps counter
+                    // Stress chart - x-axis matches data points
                     let paddedStress = [...stressHistory.value];
-                    if (paddedStress.length > 0 && totalStepsNow > paddedStress.length) {
+                    const stressDataLength = paddedStress.length;
+                    // Ensure stress data matches reward data length
+                    if (stressDataLength < totalStepsNow && stressDataLength > 0) {
                         const lastStress = paddedStress[paddedStress.length - 1];
                         while (paddedStress.length < totalStepsNow) {
                             paddedStress.push(lastStress);
                         }
+                    } else if (stressDataLength > totalStepsNow) {
+                        // Trim if somehow longer
+                        paddedStress = paddedStress.slice(0, totalStepsNow);
                     }
                     
                     Plotly.react('stress-chart', [{

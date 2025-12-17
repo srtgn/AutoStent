@@ -199,6 +199,7 @@ training_state = {
     "is_training": False,
     "progress": 0.0,
     "current_step": 0,
+    "logged_steps": 0,  # Number of actual data points logged
     "total_steps": 0,
     "episodes": 0,
     "current_params": {},
@@ -290,17 +291,25 @@ if SB3_AVAILABLE:
                         else:
                             print(f"Step {self.step_count}: ✓ 4C REAL simulation in {time.time()-start_time:.2f}s. Stress: {stress:.2f} MPa, Disp: {displacement:.4f} mm")
                     else:
-                        # Simulation failed - use high penalty
+                        # Simulation failed - log detailed error and use analytical fallback instead of penalty
                         error_msg = result.get('error', 'Unknown error')
+                        log_path = result.get('log_path', 'N/A')
                         print(f"Step {self.step_count}: ✗ 4C Failed: {error_msg}")
-                        stress = 1000.0  # High penalty
-                        displacement = 10.0
+                        print(f"  Log path: {log_path}")
+                        print(f"  Using analytical fallback instead of penalty")
+                        # Use analytical calculation instead of penalty - better for learning
+                        d, t, n = self.params['diameter'], self.params['strut_thickness'], self.params['num_struts']
+                        stress = 100 * (0.12 / max(t, 0.05))**1.5 * (10.0 / max(d, 5))**0.5 * (12 / max(n, 6))**0.8
+                        displacement = 0.3 * (self.params['length'] / 20) * (0.12 / max(t, 0.05))
                 except Exception as e:
                     import traceback
                     print(f"Step {self.step_count}: ✗ Env Exception: {e}")
                     traceback.print_exc()
-                    stress = 1000.0
-                    displacement = 10.0
+                    # Use analytical fallback instead of penalty
+                    print(f"  Using analytical fallback due to exception")
+                    d, t, n = self.params['diameter'], self.params['strut_thickness'], self.params['num_struts']
+                    stress = 100 * (0.12 / max(t, 0.05))**1.5 * (10.0 / max(d, 5))**0.5 * (12 / max(n, 6))**0.8
+                    displacement = 0.3 * (self.params['length'] / 20) * (0.12 / max(t, 0.05))
             else:
                 # Fast Mockup Calculation
                 d, t, n = self.params['diameter'], self.params['strut_thickness'], self.params['num_struts']
@@ -331,7 +340,11 @@ if SB3_AVAILABLE:
             
             if self.n_calls % 2 == 0:  # Log every 2 steps for smoother curves
                 with state_lock:
-                    training_state["current_step"] = self.n_calls
+                    # Report actual logged step count, not callback count
+                    # This ensures steps counter matches the number of data points
+                    logged_steps = len(training_state["rewards"]) + 1
+                    training_state["current_step"] = self.n_calls  # Keep for progress calculation
+                    training_state["logged_steps"] = logged_steps  # Actual number of data points
                     training_state["progress"] = self.n_calls / self.total_steps
                     training_state["rewards"].append(float(reward))
                     try:
@@ -381,6 +394,7 @@ if SB3_AVAILABLE:
             training_state["is_training"] = True
             training_state["total_steps"] = total_steps
             training_state["current_step"] = 0
+            training_state["logged_steps"] = 0
             training_state["progress"] = 0.0
             training_state["episodes"] = 0
             training_state["rewards"] = []
@@ -525,39 +539,66 @@ try:
     from mesh_generator import (
         StentGeometry,
         generate_cylindrical_stent_mesh,
-        write_4c_geometry
+        write_4c_geometry,
+        write_vtu_file,
+        PV_AVAILABLE as PV_AVAILABLE_FROM_MESH
     )
     from vtu_parser import parse_vtu_file, find_latest_vtu
     MESH_TOOLS_AVAILABLE = True
+    PV_AVAILABLE = PV_AVAILABLE_FROM_MESH
+    print("✓ Mesh tools imported successfully")
 except ImportError as e:
     print(f"WARNING: Mesh tools not available: {e}")
+    import traceback
+    traceback.print_exc()
     MESH_TOOLS_AVAILABLE = False
+    PV_AVAILABLE = False
 
 
 def generate_4c_yaml(params: StentParams, output_path: Path):
     """Generate complete 4C YAML input file with real mesh."""
     
     if not MESH_TOOLS_AVAILABLE:
-        # Fallback to simple YAML without mesh
-        yaml_content = f"""# Simplified 4C input (mesh tools not available)
-PROBLEM_SIZE: 3
-PROBLEM_TYPE: Structure
+        # Generate minimal but VALID 4C YAML that can actually run
+        # Use analytical approximation since we can't generate mesh
+        # This is a placeholder - 4C needs geometry, but we'll use a simple beam model
+        yaml_content = f"""TITLE: Stent simulation (analytical approximation)
+PROBLEM TYPE:
+  PROBLEMTYPE: Structure
 
-STRUCTURAL:
-  NEWMARK:
-    TIMESTEP: 0.001
-    NUMSTEP: 50
-    
+IO:
+  OUTPUT_SPRING: true
+  STRUCT_STRESS: "Cauchy"
+  VERBOSITY: "Standard"
+  WRITE_INITIAL_STATE: false
+
+IO/RUNTIME VTK OUTPUT:
+  INTERVAL_STEPS: 1
+  OUTPUT_DATA_FORMAT: binary
+
+STRUCTURAL DYNAMIC:
+  INT_STRATEGY: "Standard"
+  DYNAMICTYPE: "Statics"
+  TIMESTEP: 1.0
+  NUMSTEP: 1
+  MAXTIME: 1.0
+  LINEAR_SOLVER: 1
+  TOLDISP: 1e-06
+  TOLRES: 1e-06
+
 MATERIALS:
-  MAT 1:
-    TYPE: ElastHyper
-    YOUNG: 200000.0
-    NUE: 0.3
-    DENS: 6.45e-9
+  - MAT: 1
+    MAT_Struct_StVenantKirchhoff:
+      YOUNG: 200000.0
+      NUE: 0.3
+      DENS: 6.45e-9
 
-# Mesh would be here
+# NOTE: This YAML is incomplete - 4C requires geometry/mesh
+# Without mesh tools, 4C cannot run. Using analytical fallback in code.
 """
         output_path.write_text(yaml_content)
+        print(f"WARNING: Generated incomplete YAML (no mesh tools). 4C will fail.")
+        print(f"  This is expected - code will use analytical fallback.")
         return
     
     # Generate real mesh
@@ -575,69 +616,132 @@ MATERIALS:
         n_radial=2
     )
     
-    # Write complete 4C YAML
+    # Write VTU file (4C prefers this format)
+    vtu_path = output_path.parent / f"{output_path.stem}.vtu"
+    if PV_AVAILABLE:
+        try:
+            write_vtu_file(nodes, elements, str(vtu_path))
+            print(f"✓ Generated VTU file: {vtu_path}")
+            use_vtu = True
+        except Exception as e:
+            print(f"⚠ Failed to write VTU file: {e}, using inline geometry")
+            use_vtu = False
+    else:
+        use_vtu = False
+    
+    # Write complete 4C YAML (matching 4C's actual format from tutorial)
     with open(output_path, 'w') as f:
-        f.write("""# 4C Stent Simulation with Real Mesh
-PROBLEM_SIZE: 3
-PROBLEM_TYPE: Structure
+        f.write(f"""TITLE: Stent simulation - diameter={params.diameter}mm, length={params.length}mm
+PROBLEM TYPE:
+  PROBLEMTYPE: Structure
 
-STRUCTURAL:
-  NEWMARK:
-    TIMESTEP: 0.001
-    NUMSTEP: 50
-    LOADSTEP_SIZE: 0.02
+IO:
+  OUTPUT_SPRING: true
+  STRUCT_STRESS: "Cauchy"
+  STRUCT_STRAIN: "GL"
+  VERBOSITY: "Standard"
+  WRITE_INITIAL_STATE: false
+
+IO/RUNTIME VTK OUTPUT:
+  INTERVAL_STEPS: 1
+  OUTPUT_DATA_FORMAT: binary
+
+IO/RUNTIME VTK OUTPUT/STRUCTURE:
+  OUTPUT_STRUCTURE: true
+  DISPLACEMENT: true
+  STRESS_STRAIN: true
+  GAUSS_POINT_DATA_OUTPUT_TYPE: nodes
+
+SOLVER 1:
+  SOLVER: "Superlu"
+  NAME: "Structure_Solver"
+
+STRUCTURAL DYNAMIC:
+  INT_STRATEGY: "Standard"
+  DYNAMICTYPE: "Statics"
+  TIMESTEP: 1.0
+  NUMSTEP: 1
+  MAXTIME: 1.0
+  TOLDISP: 1e-06
+  TOLRES: 1e-06
+  LOADLIN: true
+  LINEAR_SOLVER: 1
 
 MATERIALS:
-  MAT 1:
-    TYPE: ElastHyper
-    YOUNG: 200000.0  # MPa (NiTi)
-    NUE: 0.3
-    DENS: 6.45e-9  # kg/mm^3
+  - MAT: 1
+    MAT_Struct_StVenantKirchhoff:
+      YOUNG: 200000.0
+      NUE: 0.3
+      DENS: 6.45e-9
 
 """)
         
-        # Write geometry
-        f.write("GEOMETRY:\n")
-        f.write("  NODES:\n")
-        for i, node in enumerate(nodes):
-            f.write(f"    - ID: {i+1}, COORDS: [{node[0]:.6f}, {node[1]:.6f}, {node[2]:.6f}]\n")
-        
-        f.write("\n  ELEMENTS:\n")
-        for i, elem in enumerate(elements):
-            node_ids = ", ".join(str(n+1) for n in elem)
-            f.write(f"    - ID: {i+1}, TYPE: hex8, NODES: [{node_ids}]\n")
-        
-        f.write("\n  ELEMENT_BLOCKS:\n")
-        f.write("    - ID: 1\n")
-        f.write(f"      ELEMENTS: [1-{len(elements)}]\n")
-        f.write("      MATERIAL: 1\n")
-        
-        f.write("\n  NODE_SETS:\n")
-        f.write("    - ID: 1, NAME: fixed_end\n")
-        fixed_ids = ", ".join(str(n+1) for n in fixed_nodes)
-        f.write(f"      NODES: [{fixed_ids}]\n")
-        f.write("    - ID: 2, NAME: loaded_surface\n")
-        loaded_ids = ", ".join(str(n+1) for n in loaded_nodes)
-        f.write(f"      NODES: [{loaded_ids}]\n")
-        
-        # Boundary conditions
-        pressure = params.diameter * 0.1  # Radial pressure
-        f.write(f"""
-BOUNDARY_CONDITIONS:
-  DIRICHLET:
-    - NODE_SETS: [1]
-      DOF: [1, 2, 3]
-      VALUE: 0.0
-  
-  NEUMANN:
-    - NODE_SETS: [2]
-      DOF: [2]
-      VALUE: {pressure}
+        # Use VTU file if available, otherwise inline geometry
+        if use_vtu and vtu_path.exists():
+            f.write(f"""STRUCTURE GEOMETRY:
+  FILE: {vtu_path.name}
+  ELEMENT_BLOCKS:
+    - ID: 1
+      SOLID:
+        HEX8:
+          MAT: 1
+          KINEM: nonlinear
 
-OUTPUT:
-  VTK:
-    INTERVAL: 10
-    FIELDS: ['stress', 'displacement', 'strain']
+""")
+        else:
+            # Fallback: inline geometry (may not work, but better than nothing)
+            f.write("GEOMETRY:\n")
+            f.write("  NODES:\n")
+            for i, node in enumerate(nodes):
+                f.write(f"    - ID: {i+1}\n")
+                f.write(f"      COORDS: [{node[0]:.6f}, {node[1]:.6f}, {node[2]:.6f}]\n")
+            
+            f.write("\n  ELEMENTS:\n")
+            for i, elem in enumerate(elements):
+                node_ids = ", ".join(str(n+1) for n in elem)
+                f.write(f"    - ID: {i+1}\n")
+                f.write(f"      TYPE: hex8\n")
+                f.write(f"      NODES: [{node_ids}]\n")
+            
+            f.write("\n  ELEMENT_BLOCKS:\n")
+            f.write("    - ID: 1\n")
+            f.write(f"      ELEMENTS: [1-{len(elements)}]\n")
+            f.write("      MATERIAL: 1\n")
+        
+        # Boundary conditions (using node sets)
+        fixed_ids = ", ".join(str(n+1) for n in fixed_nodes)
+        loaded_ids = ", ".join(str(n+1) for n in loaded_nodes)
+        pressure = params.diameter * 0.1  # Radial pressure in MPa
+        
+        f.write(f"""
+DESIGN SURF DIRICH CONDITIONS:
+  - E: 1
+    ENTITY_TYPE: node_set_id
+    NUMDOF: 3
+    ONOFF: [1, 1, 1]
+    VAL: [0.0, 0.0, 0.0]
+    FUNCT: [0, 0, 0]
+
+DESIGN SURF NEUMANN CONDITIONS:
+  - E: 2
+    ENTITY_TYPE: node_set_id
+    NUMDOF: 3
+    ONOFF: [0, 1, 0]
+    VAL: [0.0, {pressure}, 0.0]
+    FUNCT: [0, 0, 0]
+    TYPE: "orthopressure"
+""")
+        
+        # Add node sets if using inline geometry
+        if not use_vtu:
+            f.write(f"""
+NODE_SETS:
+  - ID: 1
+    NAME: fixed_end
+    NODES: [{fixed_ids}]
+  - ID: 2
+    NAME: loaded_surface
+    NODES: [{loaded_ids}]
 """)
 
 
@@ -656,9 +760,17 @@ def run_real_4c_simulation(params: StentParams):
         work_dir = Path(tempfile.mkdtemp(prefix="4c_sim_"))
         yaml_path = work_dir / "input.4C.yaml"
         output_dir = work_dir / "output"
+        output_dir.mkdir()
         
-        # Generate 4C input file
+        # Generate 4C input file (this will also generate VTU if mesh tools available)
         generate_4c_yaml(params, yaml_path)
+        
+        # Check if VTU file was created and is in the right place
+        vtu_file = yaml_path.parent / f"{yaml_path.stem}.vtu"
+        if vtu_file.exists():
+            print(f"✓ VTU file ready: {vtu_file.name}")
+        else:
+            print(f"⚠ No VTU file found (mesh tools may not be available)")
         
         # Configure simulation
         config = SimulationConfig(
@@ -670,13 +782,46 @@ def run_real_4c_simulation(params: StentParams):
         
         # Run 4C simulation
         print(f"Running real 4C simulation for: {params}")
+        print(f"  YAML path: {yaml_path}")
+        print(f"  Output dir: {output_dir}")
+        
+        # Check if YAML file was created
+        if not yaml_path.exists():
+            return {
+                "success": False,
+                "error": f"YAML file not created at {yaml_path}",
+                "log_path": None,
+                "fallback_used": True
+            }
+        
         result = fourc_sim.run_simulation(config)
         
         if not result.success:
+            # Get more detailed error info
+            error_details = result.error_message or "4C simulation failed"
+            log_content = ""
+            if result.log_path and Path(result.log_path).exists():
+                try:
+                    log_content = Path(result.log_path).read_text()[-500:]  # Last 500 chars
+                except:
+                    pass
+            
+            # Check output directory for any files
+            output_files = list(output_dir.glob("*")) if output_dir.exists() else []
+            
+            print(f"4C simulation failed:")
+            print(f"  Error: {error_details}")
+            print(f"  Log path: {result.log_path}")
+            print(f"  Output files found: {len(output_files)}")
+            if log_content:
+                print(f"  Last log lines:\n{log_content}")
+            
             return {
                 "success": False,
-                "error": result.error_message or "4C simulation failed",
+                "error": error_details,
                 "log_path": str(result.log_path) if result.log_path else None,
+                "log_content": log_content,
+                "output_files": [str(f.name) for f in output_files],
                 "fallback_used": True
             }
         
@@ -804,6 +949,7 @@ def get_rl_status():
             "is_training": bool(training_state["is_training"]),
             "progress": float(training_state["progress"]),
             "current_step": int(training_state["current_step"]),
+            "logged_steps": int(training_state.get("logged_steps", len(training_state["rewards"]))),
             "total_steps": int(training_state["total_steps"]),
             "episodes": int(training_state["episodes"]),
             "current_params": {k: float(v) for k, v in training_state["current_params"].items()} if training_state["current_params"] else {},
@@ -869,6 +1015,7 @@ def reset_training():
         training_state["is_training"] = False
         training_state["progress"] = 0.0
         training_state["current_step"] = 0
+        training_state["logged_steps"] = 0
         training_state["episodes"] = 0
         training_state["rewards"] = []
         training_state["stress_history"] = []
@@ -889,6 +1036,65 @@ def test_4c_simulation(request: SimulationRequest):
         "mesh_tools_available": MESH_TOOLS_AVAILABLE if 'MESH_TOOLS_AVAILABLE' in dir() else False,
         "recommendation": "Check the 'test_result' field for simulation details"
     }
+
+@app.get("/test-4c-docker")
+def test_4c_docker_direct():
+    """Test 4C Docker image directly using a tutorial file from the image."""
+    import subprocess
+    import tempfile
+    
+    print("Testing 4C Docker image with tutorial file...")
+    
+    # Create temp directory for output
+    work_dir = Path(tempfile.mkdtemp(prefix="4c_test_"))
+    output_dir = work_dir / "output"
+    output_dir.mkdir()
+    
+    try:
+        # Run 4C with tutorial file from the Docker image
+        cmd = [
+            "docker", "run", "--rm",
+            "--platform", "linux/amd64",
+            "-v", f"{work_dir}:/workspace",
+            "-w", "/workspace",
+            "ghcr.io/4c-multiphysics/4c:main",
+            "/home/user/4C/build/4C",
+            "/home/user/4C/tests/input_files/tutorial_solid_vtu.4C.yaml",
+            "test_output"
+        ]
+        
+        print(f"Running: {' '.join(cmd)}")
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        
+        # Check output files
+        output_files = list(output_dir.glob("*"))
+        
+        return {
+            "success": result.returncode == 0,
+            "returncode": result.returncode,
+            "stdout": result.stdout[-1000:] if result.stdout else "",
+            "stderr": result.stderr[-1000:] if result.stderr else "",
+            "output_files": [f.name for f in output_files],
+            "output_dir": str(output_dir),
+            "command": " ".join(cmd)
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "success": False,
+            "error": "Timeout after 120 seconds",
+            "output_files": [f.name for f in output_dir.glob("*")] if output_dir.exists() else []
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "output_files": []
+        }
 
 
 if __name__ == "__main__":

@@ -7,6 +7,15 @@ Creates hex8 finite element meshes of cylindrical stents from geometric paramete
 import numpy as np
 from typing import Tuple, List
 from dataclasses import dataclass
+from pathlib import Path
+
+# Try to import pyvista for VTU file writing
+try:
+    import pyvista as pv
+    PV_AVAILABLE = True
+except ImportError:
+    PV_AVAILABLE = False
+    print("WARNING: pyvista not available, cannot write VTU files")
 
 
 @dataclass
@@ -169,3 +178,45 @@ if __name__ == "__main__":
     
     write_4c_geometry(nodes, elements, fixed, loaded, "test_stent_mesh.yaml")
     print("Wrote test mesh to test_stent_mesh.yaml")
+    
+    # Test VTU writing
+    if PV_AVAILABLE:
+        vtu_path = write_vtu_file(nodes, elements, "test_stent_mesh.vtu")
+        print(f"Wrote VTU file to {vtu_path}")
+
+
+def write_vtu_file(
+    nodes: np.ndarray,
+    elements: np.ndarray,
+    output_path: str
+) -> Path:
+    """
+    Write mesh as VTU (VTK unstructured) file for 4C.
+    
+    Args:
+        nodes: (N, 3) array of node coordinates
+        elements: (M, 8) array of hex8 element connectivity (0-indexed)
+        output_path: Output VTU file path
+        
+    Returns:
+        Path to written VTU file
+    """
+    if not PV_AVAILABLE:
+        raise ImportError("pyvista not available, cannot write VTU files")
+    
+    # Create unstructured grid
+    # PyVista expects 1-indexed connectivity, but we have 0-indexed
+    # Also need to specify cell type (VTK_HEXAHEDRON = 12)
+    cell_array = []
+    for elem in elements:
+        cell_array.append(8)  # Number of points in hex8
+        cell_array.extend(elem.tolist())
+    
+    # Create grid
+    grid = pv.UnstructuredGrid(cell_array, [12] * len(elements), nodes)
+    
+    # Write VTU file
+    output_path_obj = Path(output_path)
+    grid.save(str(output_path_obj))
+    
+    return output_path_obj
