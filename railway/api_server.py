@@ -253,18 +253,18 @@ def get_rl_status():
     """Get RL training status - matches rl_backend.py API."""
     with state_lock:
         return {
-            "is_training": training_state["is_training"],
-            "progress": training_state["progress"],
-            "current_step": training_state["current_step"],
-            "total_steps": training_state["total_steps"],
-            "episodes": training_state["episodes"],
-            "current_params": training_state["current_params"],
-            "best_params": training_state["best_params"],
-            "best_reward": training_state["best_reward"],
-            "rewards": training_state["rewards"][-100:],
-            "stress_history": training_state["stress_history"][-100:],
-            "episode_rewards": training_state["episode_rewards"][-50:],
-            "sb3_available": SB3_AVAILABLE,
+            "is_training": bool(training_state["is_training"]),
+            "progress": float(training_state["progress"]),
+            "current_step": int(training_state["current_step"]),
+            "total_steps": int(training_state["total_steps"]),
+            "episodes": int(training_state["episodes"]),
+            "current_params": {k: float(v) for k, v in training_state["current_params"].items()} if training_state["current_params"] else {},
+            "best_params": {k: float(v) for k, v in training_state["best_params"].items()} if training_state["best_params"] else {},
+            "best_reward": float(training_state["best_reward"]),
+            "rewards": [float(x) for x in training_state["rewards"][-100:]],
+            "stress_history": [float(x) for x in training_state["stress_history"][-100:]],
+            "episode_rewards": [float(x) for x in training_state["episode_rewards"][-50:]],
+            "sb3_available": bool(SB3_AVAILABLE),
         }
 
 @app.post("/start")
