@@ -244,8 +244,54 @@ def root():
     return {"status": "ok", "service": "4C + RL API", "sb3_available": SB3_AVAILABLE}
 
 @app.get("/health")
-def health():
+def health_check():
     return {"status": "healthy"}
+
+@app.get("/check-4c")
+def check_4c_status():
+    """Diagnostic endpoint to check 4C availability."""
+    import subprocess
+    import shutil
+    
+    result = {
+        "fourc_available": FOURC_AVAILABLE,
+        "mesh_tools_available": MESH_TOOLS_AVAILABLE if 'MESH_TOOLS_AVAILABLE' in dir() else False,
+        "sb3_available": SB3_AVAILABLE,
+        "binary_path": None,
+        "binary_exists": False,
+        "binary_version": None,
+        "error": None
+    }
+    
+    # Check if fourc binary exists
+    fourc_path = shutil.which("fourc")
+    if fourc_path:
+        result["binary_path"] = fourc_path
+        result["binary_exists"] = True
+        
+        # Try to get version
+        try:
+            version_output = subprocess.run(
+                ["fourc", "--version"], 
+                capture_output=True, 
+                text=True, 
+                timeout=5
+            )
+            result["binary_version"] = version_output.stdout.strip() or version_output.stderr.strip()
+        except Exception as e:
+            result["error"] = f"Could not get version: {str(e)}"
+    else:
+        # Check common paths
+        for path in ["/usr/local/bin/fourc", "/usr/bin/fourc", "/app/fourc"]:
+            if Path(path).exists():
+                result["binary_path"] = path
+                result["binary_exists"] = True
+                break
+        
+        if not result["binary_exists"]:
+            result["error"] = "fourc binary not found in PATH or common locations"
+    
+    return result
 
 # ===== HELPER FUNCTIONS =====
 # Import mesh generation and VTU parsing
