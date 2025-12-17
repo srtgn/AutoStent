@@ -377,36 +377,38 @@
             </div>
         </div>
 
-        <!-- 4C-Webviewer Integrated Panel (always visible) -->
-        <div class="card p-4 mt-6">
-            <div class="flex items-center justify-between mb-3">
-                <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide">
-                    4C Webviewer Integration
-                </h2>
-                <div class="flex items-center gap-4">
-                    <span class="text-xs text-gray-500">Official 4C Multiphysics Viewer</span>
-                    <button @click="show4CViewer = !show4CViewer" class="btn btn-secondary text-xs">
-                        {{ show4CViewer ? 'Hide Viewer' : 'Show Viewer' }}
-                    </button>
+        <!-- 4C-Webviewer Integrated Panel (HIDDEN - deployment issues) -->
+        <div style="display: none;">
+            <div class="card p-4 mt-6">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+                        4C Webviewer Integration
+                    </h2>
+                    <div class="flex items-center gap-4">
+                        <span class="text-xs text-gray-500">Official 4C Multiphysics Viewer</span>
+                        <button @click="show4CViewer = !show4CViewer" class="btn btn-secondary text-xs">
+                            {{ show4CViewer ? 'Hide Viewer' : 'Show Viewer' }}
+                        </button>
+                    </div>
                 </div>
-            </div>
 
-            <div v-if="show4CViewer" class="border border-gray-200 rounded-lg overflow-hidden">
-                <div class="bg-gray-50 px-4 py-2 border-b border-gray-200 flex items-center justify-between">
-                    <span class="text-xs text-gray-600">4C-Webviewer @ 4cwebviewer.up.railway.app</span>
-                    <a :href="webviewerUrl" target="_blank" class="text-xs text-blue-600 hover:underline">
-                        Open in new tab ↗
-                    </a>
+                <div v-if="show4CViewer" class="border border-gray-200 rounded-lg overflow-hidden">
+                    <div class="bg-gray-50 px-4 py-2 border-b border-gray-200 flex items-center justify-between">
+                        <span class="text-xs text-gray-600">4C-Webviewer @ 4cwebviewer.up.railway.app</span>
+                        <a :href="webviewerUrl" target="_blank" class="text-xs text-blue-600 hover:underline">
+                            Open in new tab ↗
+                        </a>
+                    </div>
+                    <iframe :src="webviewerUrl" class="w-full bg-white" style="height: 600px; border: none;"
+                        title="4C Webviewer"></iframe>
                 </div>
-                <iframe :src="webviewerUrl" class="w-full bg-white" style="height: 600px; border: none;"
-                    title="4C Webviewer"></iframe>
-            </div>
 
-            <div v-else class="bg-gray-50 rounded-lg p-6 text-center">
-                <p class="text-gray-500 text-sm mb-2">Click "Show Viewer" to embed the 4C-webviewer</p>
-                <p class="text-xs text-gray-400">
-                    Make sure the 4C-webviewer is running and the URL is correct.
-                </p>
+                <div v-else class="bg-gray-50 rounded-lg p-6 text-center">
+                    <p class="text-gray-500 text-sm mb-2">Click "Show Viewer" to embed the 4C-webviewer</p>
+                    <p class="text-xs text-gray-400">
+                        Make sure the 4C-webviewer is running and the URL is correct.
+                    </p>
+                </div>
             </div>
         </div>
     </div>
