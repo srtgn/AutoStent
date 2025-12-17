@@ -436,9 +436,22 @@
                         const res = await fetch(`${backendUrl}/check-4c`);
                         if (res.ok) {
                             const data = await res.json();
-                            fourcStatus.value = data.fourc_available ? 'available' : 'unavailable';
-                            if (!data.fourc_available) {
-                                console.warn('4C not available:', data);
+                            // Check both fourc_available AND fourc_can_execute
+                            // Also check for missing libraries in debug_info
+                            const hasMissingLibs = data.debug_info?.missing_libs && 
+                                                   data.debug_info.missing_libs !== 'none' &&
+                                                   data.debug_info.missing_libs.length > 0;
+                            const canRun = data.fourc_available && data.fourc_can_execute && !hasMissingLibs;
+                            
+                            fourcStatus.value = canRun ? 'available' : 'unavailable';
+                            
+                            if (!canRun) {
+                                console.warn('4C not fully available:', {
+                                    fourc_available: data.fourc_available,
+                                    fourc_can_execute: data.fourc_can_execute,
+                                    missing_libs_count: data.debug_info?.missing_lib_count || data.debug_info?.missing_libs?.length || 0,
+                                    recommendation: data.recommendation
+                                });
                             }
                         } else {
                             fourcStatus.value = 'unavailable';
@@ -724,65 +737,15 @@
                     }, 10);
                 }
 
-                async function startRLTraining() {
-                    if (training.value) return;
-
-                    // Real 4C mode - warn about time
-                    if (useDocker.value) {
-                        const confirmed = confirm(
-                            '⚠️ Real 4C Mode Enabled\n\n' +
-                            'Each simulation will take 30-60 seconds.\n' +
-                            `Training with ${trainSteps.value} steps will take approximately ${Math.round(trainSteps.value * 45 / 60)} minutes.\n\n` +
-                            'Recommendation: Use mockup mode (uncheck box) for fast RL training, then validate final design with real 4C.\n\n' +
-                            'Continue with real 4C?'
-                        );
-
-                        if (!confirmed) {
-                            return;
-                        }
-                    }
-
-                    // Try backend RL if useDocker is true
-                    if (useDocker.value) {
-                        try {
-                            await fetch(`${backendUrl}/stop`, { method: 'POST' });
-                        } catch (e) { }
-
-                        try {
-                            const res = await fetch(`${backendUrl}/start`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    steps: trainSteps.value,
-                                    use_docker: useDocker.value // Pass user choice to backend
-                                })
-                            });
-                            const data = await res.json();
-                            if (data.status === 'started') {
-                                training.value = true;
-                                progress.value = 0;
-                                steps.value = 0;
-                                episodes.value = 0;
-                                rewardHistory.value = [];
-                                stressHistory.value = [];
-                                episodeRewards.value = [];
-                                startPolling();
-                            }
-                        } catch (e) {
-                            console.error('Failed to start training:', e);
-                            alert('Failed to start training. Check backend.');
-                        }
-                        return;
-                    }
-                }
-
                 async function stopTraining() {
-                    // Stop real RL if running
-                    if (useRealRL.value) {
+                    // Stop backend training if using Real RL OR 4C mode
+                    if (useRealRL.value || useDocker.value) {
                         stopPolling();
                         try {
                             await fetch(`${backendUrl}/stop`, { method: 'POST' });
-                        } catch (e) { }
+                        } catch (e) {
+                            console.error('Failed to stop backend training:', e);
+                        }
                     }
 
                     if (trainingInterval) {
@@ -798,7 +761,25 @@
                     updateCharts();
                 }
 
-                function resetEnv() {
+                async function resetEnv() {
+                    // Stop any ongoing training first
+                    stopPolling();
+                    if (trainingInterval) {
+                        clearInterval(trainingInterval);
+                        trainingInterval = null;
+                    }
+                    
+                    // Reset backend if we were using it
+                    if (useRealRL.value || useDocker.value) {
+                        try {
+                            await fetch(`${backendUrl}/stop`, { method: 'POST' });
+                            await fetch(`${backendUrl}/reset`, { method: 'POST' });
+                        } catch (e) {
+                            console.error('Failed to reset backend:', e);
+                        }
+                    }
+                    
+                    // Reset local state
                     params.value = { diameter: 10.0, length: 20.0, strutThickness: 0.12, numStruts: 12, crownHeight: 1.0 };
                     metrics.value = { stress: 150, displacement: 0.5 };
                     episodeRewards.value = [];
@@ -807,6 +788,7 @@
                     episodes.value = 0;
                     steps.value = 0;
                     progress.value = 0;
+                    training.value = false;
                     comparisonDone.value = false;
                     trainedPolicy.value = null;
                     computeMetrics();

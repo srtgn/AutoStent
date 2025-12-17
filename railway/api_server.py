@@ -51,23 +51,29 @@ if FOURC_BINARY_EXISTS:
         )
         FOURC_VERSION_OUTPUT = test_result.stdout.strip() or test_result.stderr.strip()
         
-        # Check if it actually ran successfully (not just exists)
+        # Check for common failure indicators
+        has_library_error = "error while loading shared libraries" in FOURC_VERSION_OUTPUT
+        has_not_found = "cannot open shared object file" in FOURC_VERSION_OUTPUT
+        
         # Return code 127 = "command not found" or shared library errors
         # Return code 0 = success
-        if test_result.returncode == 0:
+        if test_result.returncode == 127 or has_library_error or has_not_found:
+            # Definite failure - missing libraries
+            FOURC_CAN_EXECUTE = False
+            print(f"✗ 4C binary CANNOT execute - missing shared libraries!")
+            print(f"  Return code: {test_result.returncode}")
+            print(f"  Error: {FOURC_VERSION_OUTPUT[:200]}...")
+        elif test_result.returncode == 0:
             FOURC_CAN_EXECUTE = True
             print(f"✓ 4C binary verified at: {FOURC_BINARY_PATH}")
             print(f"  Version: {FOURC_VERSION_OUTPUT}")
-        elif "error while loading shared libraries" in FOURC_VERSION_OUTPUT:
-            FOURC_CAN_EXECUTE = False
-            print(f"✗ 4C binary has MISSING LIBRARIES!")
-            print(f"  Error: {FOURC_VERSION_OUTPUT}")
         else:
-            # Other non-zero return might still be okay (e.g., --version not supported)
-            FOURC_CAN_EXECUTE = True
-            print(f"⚠ 4C binary returned code {test_result.returncode}")
+            # Other non-zero return - be conservative, assume failure
+            FOURC_CAN_EXECUTE = False
+            print(f"⚠ 4C binary returned unexpected code {test_result.returncode}")
             print(f"  Output: {FOURC_VERSION_OUTPUT}")
     except Exception as e:
+        FOURC_CAN_EXECUTE = False
         print(f"✗ 4C binary exists but cannot execute: {e}")
 
 try:
