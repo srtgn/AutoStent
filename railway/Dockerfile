@@ -16,8 +16,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=fourc /home/user/4C/build/4C /usr/local/bin/fourc
 RUN chmod +x /usr/local/bin/fourc
 
+# Copy 4C shared library
+COPY --from=fourc /home/user/4C/build/lib4C.so /usr/local/lib/
+COPY --from=fourc /home/user/4C/build/lib4C.so.* /usr/local/lib/ || true
+
+# Copy Trilinos libraries (4C dependencies)
+COPY --from=fourc /home/user/4C/dependencies/install/lib/*.so* /usr/local/lib/ || true
+
 # Copy essential shared libraries from 4C image
 COPY --from=fourc /usr/lib/x86_64-linux-gnu/libmpi* /usr/lib/x86_64-linux-gnu/
+
+# Update library cache and set LD_LIBRARY_PATH
+RUN ldconfig /usr/local/lib
+ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
 
 # Set working directory
 WORKDIR /app
