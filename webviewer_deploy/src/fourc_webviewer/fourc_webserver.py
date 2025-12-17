@@ -2,6 +2,11 @@
 state, synchronizes server variables, and handles PyVista rendering for the 4C
 web viewer."""
 
+# Force offscreen rendering for VTK/PyVista before any imports
+import os
+os.environ["PYVISTA_OFF_SCREEN"] = "true"
+os.environ["VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN"] = "1"
+
 import copy
 import re
 import tempfile
