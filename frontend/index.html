@@ -143,14 +143,23 @@
                 <p class="text-gray-500 text-sm">Reinforcement Learning for Autonomous Stent Design</p>
             </div>
             <div class="flex items-center gap-6">
-                <!-- 4C Docker Mode Toggle (Controls BOTH Sim and Training) -->
+                <!-- 4C Docker Mode Toggle -->
                 <div class="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg border border-gray-200">
                     <label class="flex items-center gap-2 cursor-pointer select-none">
                         <input type="checkbox" v-model="useDocker" :disabled="training" class="w-4 h-4 accent-blue-600">
-                        <span class="text-sm font-medium text-gray-700">Enable Real 4C Solver</span>
+                        <span class="text-sm font-medium text-gray-700">4C Solver (Cloud)</span>
                     </label>
-                    <span v-if="backendConnected" class="text-xs text-green-600 font-medium ml-1">● Online</span>
-                    <span v-else class="text-xs text-red-500 font-medium ml-1">● Offline</span>
+                </div>
+
+                <!-- RL Toggle -->
+                <div class="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg border border-gray-200">
+                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                        <input type="checkbox" v-model="useRealRL" :disabled="training"
+                            class="w-4 h-4 accent-green-600">
+                        <span class="text-sm font-medium text-gray-700">RL (PPO)</span>
+                    </label>
+                    <span v-if="useRealRL && !backendConnected" class="text-xs text-red-500 font-medium">Offline</span>
+                    <span v-if="useRealRL && backendConnected" class="text-xs text-green-600 font-medium">Online</span>
                 </div>
             </div>
         </header>
