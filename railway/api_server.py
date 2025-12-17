@@ -759,10 +759,9 @@ def run_real_4c_simulation(params: StentParams):
     
     try:
         # Create temporary directory
+        # 4C writes output to same directory as input YAML file
         work_dir = Path(tempfile.mkdtemp(prefix="4c_sim_"))
         yaml_path = work_dir / "input.4C.yaml"
-        output_dir = work_dir / "output"
-        output_dir.mkdir()
         
         # Generate 4C input file (this will also generate VTU if mesh tools available)
         generate_4c_yaml(params, yaml_path)
@@ -775,9 +774,11 @@ def run_real_4c_simulation(params: StentParams):
             print(f"⚠ No VTU file found (mesh tools may not be available)")
         
         # Configure simulation
+        # 4C writes output to same directory as input YAML file
+        # So we use work_dir as output directory (where YAML is)
         config = SimulationConfig(
             yaml_input_path=yaml_path,
-            output_directory=output_dir,
+            output_directory=work_dir,  # 4C writes to same dir as input
             timeout=300.0,
             verbose=False
         )
@@ -808,8 +809,8 @@ def run_real_4c_simulation(params: StentParams):
                 except:
                     pass
             
-            # Check output directory for any files
-            output_files = list(output_dir.glob("*")) if output_dir.exists() else []
+            # Check output directory for any files (4C writes to same dir as YAML)
+            output_files = list(work_dir.glob("*")) if work_dir.exists() else []
             
             print(f"4C simulation failed:")
             print(f"  Error: {error_details}")
@@ -856,8 +857,8 @@ def run_real_4c_simulation(params: StentParams):
                 max_disp = result.max_displacement
                 print(f"Using SimulationResult values: stress={max_stress:.2f}, disp={max_disp:.4f}")
             else:
-                # Last resort: check output directory for any result files
-                vtu_files = list(output_dir.glob("*.vtu")) + list(output_dir.glob("*.vtk"))
+                # Last resort: check output directory for any result files (4C writes to same dir as YAML)
+                vtu_files = list(work_dir.glob("*.vtu")) + list(work_dir.glob("*.vtk"))
                 if vtu_files:
                     print(f"Found {len(vtu_files)} result files but couldn't parse. Files: {[f.name for f in vtu_files[:3]]}")
                     # Use analytical fallback - better than 0 or -4 penalty
@@ -1101,11 +1102,13 @@ MATERIALS:
             print("Created minimal test YAML")
         
         # Run 4C binary directly (we're already in the image!)
+        # 4C command format: 4C input.yaml output_name (no -o flag)
+        # Output goes to same directory as input file
+        output_name = "test_output"
         cmd = [
             fourc_bin,
             str(tutorial_yaml),
-            "-o",
-            str(output_dir)
+            output_name
         ]
         
         print(f"Running: {' '.join(cmd)}")

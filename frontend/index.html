@@ -442,10 +442,12 @@
                     } else if (displacementHistory.value.length > 0) {
                         // After training, show last displacement
                         return displacementHistory.value[displacementHistory.value.length - 1];
+                    } else if (useRealRL.value || useDocker.value) {
+                        // Training mode but no data yet - show 0
+                        return 0;
                     } else {
-                        // No training done - use computed metrics (from computeMetrics)
-                        // This ensures mockup mode shows calculated displacement
-                        return metrics.value.displacement;
+                        // Mockup mode (no checkboxes) - show calculated displacement
+                        return metrics.value.displacement || 0;
                     }
                 });
                 const episodes = ref(0);
@@ -624,7 +626,10 @@
                                     params.value.numStruts = data.best_params.num_struts || 12;
                                     params.value.crownHeight = data.best_params.crown_height || 1.0;
                                 }
-                                comparisonEpisodes.value = Math.min(episodes.value, 30);
+                                // Update comparison episodes to match trained episodes
+                                if (episodes.value > 0) {
+                                    comparisonEpisodes.value = Math.min(episodes.value, 30);
+                                }
                                 computeMetrics();
                                 updateStent3D();
                                 updateCharts();
@@ -811,7 +816,10 @@
                             training.value = false;
                             trainedPolicy.value = { ...bestParams };
                             params.value = { ...bestParams };
-                            comparisonEpisodes.value = Math.min(episodes.value, 30);
+                            // Update comparison episodes to match trained episodes
+                            if (episodes.value > 0) {
+                                comparisonEpisodes.value = Math.min(episodes.value, 30);
+                            }
                             computeMetrics();
                             updateStent3D();
                             updateCharts();
@@ -872,6 +880,8 @@
                     episodes.value = 0;
                     steps.value = 0;
                     progress.value = 0;
+                    // Keep comparisonEpisodes at current value (user may have set it)
+                    // It will update when training starts again
                     training.value = false;
                     comparisonDone.value = false;
                     trainedPolicy.value = null;
@@ -1223,16 +1233,19 @@
                 }
 
                 watch(params, () => {
-                    // When not training, update metrics for mockup mode
-                    if (!training.value) {
+                    // When not training AND not using RL/4C (mockup mode), update metrics
+                    if (!training.value && !useRealRL.value && !useDocker.value) {
                         computeMetrics(); // Calculate displacement for mockup mode
+                        updateStent3D();
+                    } else {
+                        // Just update 3D view, don't compute metrics
                         updateStent3D();
                     }
                 }, { deep: true });
 
                 onMounted(() => {
-                    // Compute initial metrics for mockup mode (shows calculated displacement)
-                    computeMetrics();
+                    // Don't compute metrics on mount - displacement should be 0 initially
+                    // Metrics will be computed when user changes params in mockup mode
                     updateStent3D();
                     updateCharts();
                     // Check backend connection periodically

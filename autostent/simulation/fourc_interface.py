@@ -173,10 +173,11 @@ class FourCSimulator:
         # Prepare command based on execution mode
         if self.use_docker:
             # Docker execution - mount working directory
+            # NOTE: This path is rarely used now (we're usually in the 4C image)
             work_dir_abs = self.working_directory.resolve()
             yaml_rel = config.yaml_input_path.resolve().relative_to(work_dir_abs)
-            output_rel = config.output_directory.resolve().relative_to(work_dir_abs)
-            
+            # 4C command format: 4C input.yaml output_name (no -o flag)
+            output_name = config.output_directory.name
             cmd = [
                 "docker", "run", "--rm",
                 "--platform", "linux/amd64",  # Required for Apple Silicon
@@ -185,15 +186,17 @@ class FourCSimulator:
                 self.DOCKER_IMAGE,
                 self.DOCKER_FOURC_PATH,
                 str(yaml_rel),
-                "-o", str(output_rel),
+                output_name,
             ]
         else:
-            # Local execution
+            # Local execution (we're in the 4C image)
+            # 4C command format: 4C input.yaml output_name
+            # Output files go to same directory as input YAML file
+            output_name = config.output_directory.name
             cmd = [
                 self.fourc_executable,
                 str(config.yaml_input_path),
-                "-o",
-                str(config.output_directory),
+                output_name,
             ]
         
         if config.verbose:
