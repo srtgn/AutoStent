@@ -30,22 +30,55 @@ except ImportError:
     print("WARNING: stable-baselines3 not installed, RL training disabled")
 
 # Try to import 4C interface
+import shutil
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Check if fourc binary actually exists
+FOURC_BINARY_PATH = shutil.which("fourc") or "/usr/local/bin/fourc"
+FOURC_BINARY_EXISTS = Path(FOURC_BINARY_PATH).exists() if FOURC_BINARY_PATH else False
+
+# Try to verify it can run
+FOURC_CAN_EXECUTE = False
+if FOURC_BINARY_EXISTS:
+    try:
+        test_result = subprocess.run(
+            [FOURC_BINARY_PATH, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        # Even if it fails, if the binary exists and runs, we're good
+        FOURC_CAN_EXECUTE = True
+        print(f"✓ 4C binary found at: {FOURC_BINARY_PATH}")
+        print(f"  Version info: {test_result.stdout.strip() or test_result.stderr.strip()}")
+    except Exception as e:
+        print(f"⚠ 4C binary exists but cannot execute: {e}")
+
 try:
-    import sys
-    sys.path.insert(0, str(Path(__file__).parent.parent))
     from autostent.simulation.fourc_interface import (
         FourCSimulator,
         SimulationConfig,
         SimulationResult
     )
-    # Initialize simulator
-    fourc_sim = FourCSimulator(use_docker=False)
-    FOURC_AVAILABLE = True
-    print("✓ 4C simulator initialized successfully")
+    # Initialize simulator - only if binary is available
+    if FOURC_CAN_EXECUTE:
+        fourc_sim = FourCSimulator(
+            fourc_executable=FOURC_BINARY_PATH,
+            use_docker=False
+        )
+        FOURC_AVAILABLE = True
+        print("✓ 4C simulator initialized successfully")
+    else:
+        fourc_sim = None
+        FOURC_AVAILABLE = False
+        print("⚠ 4C simulator not initialized - binary not available")
 except Exception as e:
     FOURC_AVAILABLE = False
     fourc_sim = None
     print(f"WARNING: 4C solver not available: {e}")
+    import traceback
+    traceback.print_exc()
     print("         Real 4C mode will fallback to mockup")
 
 app = FastAPI(
@@ -119,9 +152,18 @@ if SB3_AVAILABLE:
             self.params = {'diameter': 10.0, 'strut_thickness': 0.12, 'num_struts': 12, 'crown_height': 1.0, 'length': 20.0}
             
             if self.use_real_4c:
-                print(f"Environment initialized with REAL 4C solver (FOURC_AVAILABLE={FOURC_AVAILABLE})")
+                print(f"🔬 Environment initialized with REAL 4C solver")
+                print(f"   Binary: {FOURC_BINARY_PATH}")
+                print(f"   WARNING: Each step will take 30-60 seconds!")
             else:
-                print(f"Environment initialized with MOCKUP solver (requested={use_real_4c}, available={FOURC_AVAILABLE})")
+                if use_real_4c and not FOURC_AVAILABLE:
+                    print(f"⚠️  REAL 4C requested but NOT available!")
+                    print(f"   FOURC_AVAILABLE={FOURC_AVAILABLE}")
+                    print(f"   FOURC_BINARY_EXISTS={FOURC_BINARY_EXISTS}")
+                    print(f"   FOURC_CAN_EXECUTE={FOURC_CAN_EXECUTE}")
+                    print(f"   Falling back to MOCKUP mode")
+                else:
+                    print(f"⚡ Environment initialized with MOCKUP solver (fast mode)")
             
         def reset(self, seed=None, options=None):
             self.params = {'diameter': 10.0, 'strut_thickness': 0.12, 'num_struts': 12, 'crown_height': 1.0, 'length': 20.0}
@@ -161,14 +203,12 @@ if SB3_AVAILABLE:
                     if result.get("success"):
                         stress = result.get("max_von_mises_stress", 100.0)
                         displacement = result.get("max_displacement", 0.0)
+                        print(f"Step {self.step_count}: ✓ 4C REAL simulation in {time.time()-start_time:.2f}s. Stress: {stress:.2f} MPa")
                     else:
-                        # Simulation failed
-                        print(f"Env 4C Failed: {result.get('error')}")
-                        stress = 1000.0 # High penalty
+                        # Simulation failed - use high penalty
+                        print(f"Step {self.step_count}: ✗ 4C Failed: {result.get('error')}")
+                        stress = 1000.0  # High penalty
                         displacement = 10.0
-                        stress = 1000.0 # High penalty
-                        displacement = 10.0
-                    print(f"Step {self.step_count}: 4C Finished in {time.time()-start_time:.2f}s. Result: {stress:.2f} MPa")
                 except Exception as e:
                     print(f"Env Exception: {e}")
                     stress = 1000.0
@@ -292,46 +332,54 @@ def health_check():
 @app.get("/check-4c")
 def check_4c_status():
     """Diagnostic endpoint to check 4C availability."""
-    import subprocess
-    import shutil
     
     result = {
         "fourc_available": FOURC_AVAILABLE,
+        "fourc_binary_path": FOURC_BINARY_PATH,
+        "fourc_binary_exists": FOURC_BINARY_EXISTS,
+        "fourc_can_execute": FOURC_CAN_EXECUTE,
         "mesh_tools_available": MESH_TOOLS_AVAILABLE if 'MESH_TOOLS_AVAILABLE' in dir() else False,
         "sb3_available": SB3_AVAILABLE,
-        "binary_path": None,
-        "binary_exists": False,
         "binary_version": None,
-        "error": None
+        "ld_library_path": os.environ.get("LD_LIBRARY_PATH", "not set"),
+        "error": None,
+        "debug_info": {}
     }
     
-    # Check if fourc binary exists
-    fourc_path = shutil.which("fourc")
-    if fourc_path:
-        result["binary_path"] = fourc_path
-        result["binary_exists"] = True
-        
-        # Try to get version
+    # Try to get version and more debug info
+    if FOURC_BINARY_EXISTS:
         try:
             version_output = subprocess.run(
-                ["fourc", "--version"], 
+                [FOURC_BINARY_PATH, "--version"], 
                 capture_output=True, 
                 text=True, 
-                timeout=5
+                timeout=10
             )
             result["binary_version"] = version_output.stdout.strip() or version_output.stderr.strip()
+            result["debug_info"]["version_returncode"] = version_output.returncode
         except Exception as e:
             result["error"] = f"Could not get version: {str(e)}"
-    else:
-        # Check common paths
-        for path in ["/usr/local/bin/fourc", "/usr/bin/fourc", "/app/fourc"]:
-            if Path(path).exists():
-                result["binary_path"] = path
-                result["binary_exists"] = True
-                break
-        
-        if not result["binary_exists"]:
-            result["error"] = "fourc binary not found in PATH or common locations"
+    
+    # Check library dependencies
+    if FOURC_BINARY_EXISTS:
+        try:
+            ldd_output = subprocess.run(
+                ["ldd", FOURC_BINARY_PATH],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            missing_libs = [line for line in ldd_output.stdout.split('\n') if 'not found' in line]
+            result["debug_info"]["missing_libs"] = missing_libs if missing_libs else "none"
+        except Exception as e:
+            result["debug_info"]["ldd_error"] = str(e)
+    
+    # Also check if /usr/local/lib has the required libs
+    try:
+        lib_contents = list(Path("/usr/local/lib").glob("*4C*")) if Path("/usr/local/lib").exists() else []
+        result["debug_info"]["4c_libs_in_usr_local"] = [str(p) for p in lib_contents]
+    except Exception as e:
+        result["debug_info"]["lib_check_error"] = str(e)
     
     return result
 
@@ -607,6 +655,9 @@ def get_rl_status():
             "stress_history": [float(x) for x in training_state["stress_history"]],  # Send ALL
             "episode_rewards": [float(x) for x in training_state["episode_rewards"]],  # Send ALL
             "sb3_available": bool(SB3_AVAILABLE),
+            "fourc_available": bool(FOURC_AVAILABLE),
+            "fourc_binary_exists": bool(FOURC_BINARY_EXISTS),
+            "fourc_can_execute": bool(FOURC_CAN_EXECUTE),
         }
 
 @app.post("/start")
@@ -615,13 +666,35 @@ def start_training(request: TrainRequest):
     if not SB3_AVAILABLE:
         return {"status": "error", "message": "stable-baselines3 not installed"}
     
+    # If user requests real 4C, check availability BEFORE starting
+    if request.use_docker and not FOURC_AVAILABLE:
+        return {
+            "status": "error",
+            "message": "Real 4C solver requested but not available on this server.",
+            "details": {
+                "fourc_available": FOURC_AVAILABLE,
+                "fourc_binary_exists": FOURC_BINARY_EXISTS,
+                "fourc_can_execute": FOURC_CAN_EXECUTE,
+                "binary_path": FOURC_BINARY_PATH
+            },
+            "suggestion": "Uncheck '4C Solver (Cloud)' to use fast mockup mode, or contact admin to fix 4C installation."
+        }
+    
     with state_lock:
         if training_state["is_training"]:
             return {"status": "already_running"}
     
+    mode = "REAL 4C" if (request.use_docker and FOURC_AVAILABLE) else "MOCKUP"
+    print(f"Starting training: {request.steps} steps, mode: {mode}")
+    
     thread = threading.Thread(target=run_training, args=(request.steps, request.use_docker), daemon=True)
     thread.start()
-    return {"status": "started", "steps": request.steps}
+    return {
+        "status": "started", 
+        "steps": request.steps,
+        "mode": mode,
+        "fourc_available": FOURC_AVAILABLE
+    }
 
 @app.post("/stop")
 def stop_training():

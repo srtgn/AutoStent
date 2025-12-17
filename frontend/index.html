@@ -149,6 +149,9 @@
                         <input type="checkbox" v-model="useDocker" :disabled="training" class="w-4 h-4 accent-blue-600">
                         <span class="text-sm font-medium text-gray-700">4C Solver (Cloud)</span>
                     </label>
+                    <span v-if="useDocker && fourcStatus === 'checking'" class="text-xs text-gray-500">checking...</span>
+                    <span v-if="useDocker && fourcStatus === 'available'" class="text-xs text-green-600 font-medium">✓ Ready</span>
+                    <span v-if="useDocker && fourcStatus === 'unavailable'" class="text-xs text-red-500 font-medium">✗ Unavailable</span>
                 </div>
 
                 <!-- RL Toggle -->
@@ -418,6 +421,27 @@
                 const useDocker = ref(false);
                 const dockerAvailable = ref(true);
                 const show4CViewer = ref(true);
+                const fourcStatus = ref('checking'); // 'checking', 'available', 'unavailable'
+                
+                // Check 4C availability on the server
+                async function check4CStatus() {
+                    fourcStatus.value = 'checking';
+                    try {
+                        const res = await fetch(`${backendUrl}/check-4c`);
+                        if (res.ok) {
+                            const data = await res.json();
+                            fourcStatus.value = data.fourc_available ? 'available' : 'unavailable';
+                            if (!data.fourc_available) {
+                                console.warn('4C not available:', data);
+                            }
+                        } else {
+                            fourcStatus.value = 'unavailable';
+                        }
+                    } catch (e) {
+                        console.error('Failed to check 4C status:', e);
+                        fourcStatus.value = 'unavailable';
+                    }
+                }
 
                 // Run simulation on Railway when Docker mode is enabled
                 async function runRailwaySimulation(params) {
@@ -576,7 +600,13 @@
                     if (useRealRL.value || useDocker.value) {
                         const connected = await checkBackend();
                         if (!connected) {
-                            alert('Backend not running! Start it with: python rl_backend.py');
+                            alert('Backend not running! The Railway server at ' + backendUrl + ' is not responding.');
+                            return;
+                        }
+
+                        // Check 4C availability if docker mode is selected
+                        if (useDocker.value && fourcStatus.value === 'unavailable') {
+                            alert('⚠️ Real 4C solver is not available on the server.\n\nThe server reports that the 4C binary is not installed or not working.\n\nOptions:\n1. Uncheck "4C Solver (Cloud)" to use fast mockup mode\n2. Contact the server administrator to fix the 4C installation');
                             return;
                         }
 
@@ -586,10 +616,21 @@
                             const res = await fetch(`${backendUrl}/start`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ steps: trainSteps.value })
+                                body: JSON.stringify({ 
+                                    steps: trainSteps.value,
+                                    use_docker: useDocker.value  // Pass 4C mode flag to backend
+                                })
                             });
                             const data = await res.json();
+                            
+                            if (data.status === 'error') {
+                                // Server returned an error (e.g., 4C not available)
+                                alert('❌ Training Error:\n\n' + data.message + '\n\n' + (data.suggestion || ''));
+                                return;
+                            }
+                            
                             if (data.status === 'started') {
+                                console.log('Training started in mode:', data.mode);
                                 training.value = true;
                                 progress.value = 0;
                                 steps.value = 0;
@@ -601,7 +642,7 @@
                             }
                         } catch (e) {
                             console.error('Failed to start training:', e);
-                            alert('Failed to start training. Check backend.');
+                            alert('Failed to start training. Error: ' + e.message);
                         }
                         return;
                     }
@@ -1092,7 +1133,9 @@
                     updateCharts();
                     // Check backend connection periodically
                     checkBackend();
+                    check4CStatus();  // Check if 4C is available on server
                     setInterval(checkBackend, 5000);
+                    setInterval(check4CStatus, 30000);  // Re-check every 30 seconds
                 });
 
                 return {
@@ -1102,16 +1145,12 @@
                     // Real RL
                     useRealRL, backendConnected,
                     // 4C Docker Mode
-                    useDocker, dockerAvailable, show4CViewer,
+                    useDocker, dockerAvailable, show4CViewer, fourcStatus,
                     // Comparison
                     comparing, comparisonDone, comparisonEpisodes,
                     randomMean, trainedMean, improvement,
                     comparisonProgress, comparisonPhase,
-                    improvement,
-                    comparisonProgress, comparisonPhase,
-                    runComparison,
-                    // Webviewer
-                    show4CViewer
+                    runComparison
                 };
             }
         }).mount('#app');

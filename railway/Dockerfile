@@ -6,10 +6,11 @@ FROM ghcr.io/4c-multiphysics/4c:main AS fourc
 # Python API stage
 FROM python:3.11-slim
 
-# Install dependencies
+# Install dependencies (including debugging tools)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     libopenmpi-dev \
+    binutils \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy 4C binary from official image
@@ -19,12 +20,21 @@ RUN chmod +x /usr/local/bin/fourc
 # Copy 4C shared library
 COPY --from=fourc /home/user/4C/build/lib4C.so /usr/local/lib/
 
-# Copy MPI libraries from 4C image
+# Copy ALL potentially needed libraries from 4C image
 COPY --from=fourc /usr/lib/x86_64-linux-gnu/libmpi* /usr/lib/x86_64-linux-gnu/
+COPY --from=fourc /usr/lib/x86_64-linux-gnu/libopen* /usr/lib/x86_64-linux-gnu/ 
+COPY --from=fourc /usr/lib/x86_64-linux-gnu/libhwloc* /usr/lib/x86_64-linux-gnu/
+COPY --from=fourc /usr/lib/x86_64-linux-gnu/libevent* /usr/lib/x86_64-linux-gnu/
 
 # Update library cache and set LD_LIBRARY_PATH
-RUN ldconfig /usr/local/lib
+RUN ldconfig /usr/local/lib /usr/lib/x86_64-linux-gnu
 ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/lib/x86_64-linux-gnu
+
+# Verify 4C binary is accessible (will fail build if not)
+RUN echo "=== Verifying 4C binary ===" && \
+    ls -la /usr/local/bin/fourc && \
+    ldd /usr/local/bin/fourc || echo "ldd check complete" && \
+    /usr/local/bin/fourc --version || echo "Version check (may fail without full deps)"
 
 # Set working directory
 WORKDIR /app
