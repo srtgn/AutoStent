@@ -38,8 +38,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 FOURC_BINARY_PATH = shutil.which("fourc") or "/usr/local/bin/fourc"
 FOURC_BINARY_EXISTS = Path(FOURC_BINARY_PATH).exists() if FOURC_BINARY_PATH else False
 
-# Try to verify it can run
+# Try to verify it can run (must return exit code 0 or known success codes)
 FOURC_CAN_EXECUTE = False
+FOURC_VERSION_OUTPUT = ""
 if FOURC_BINARY_EXISTS:
     try:
         test_result = subprocess.run(
@@ -48,12 +49,26 @@ if FOURC_BINARY_EXISTS:
             text=True,
             timeout=10
         )
-        # Even if it fails, if the binary exists and runs, we're good
-        FOURC_CAN_EXECUTE = True
-        print(f"✓ 4C binary found at: {FOURC_BINARY_PATH}")
-        print(f"  Version info: {test_result.stdout.strip() or test_result.stderr.strip()}")
+        FOURC_VERSION_OUTPUT = test_result.stdout.strip() or test_result.stderr.strip()
+        
+        # Check if it actually ran successfully (not just exists)
+        # Return code 127 = "command not found" or shared library errors
+        # Return code 0 = success
+        if test_result.returncode == 0:
+            FOURC_CAN_EXECUTE = True
+            print(f"✓ 4C binary verified at: {FOURC_BINARY_PATH}")
+            print(f"  Version: {FOURC_VERSION_OUTPUT}")
+        elif "error while loading shared libraries" in FOURC_VERSION_OUTPUT:
+            FOURC_CAN_EXECUTE = False
+            print(f"✗ 4C binary has MISSING LIBRARIES!")
+            print(f"  Error: {FOURC_VERSION_OUTPUT}")
+        else:
+            # Other non-zero return might still be okay (e.g., --version not supported)
+            FOURC_CAN_EXECUTE = True
+            print(f"⚠ 4C binary returned code {test_result.returncode}")
+            print(f"  Output: {FOURC_VERSION_OUTPUT}")
     except Exception as e:
-        print(f"⚠ 4C binary exists but cannot execute: {e}")
+        print(f"✗ 4C binary exists but cannot execute: {e}")
 
 try:
     from autostent.simulation.fourc_interface import (
@@ -333,6 +348,7 @@ def health_check():
 def check_4c_status():
     """Diagnostic endpoint to check 4C availability."""
     
+    # Use cached startup values for quick response
     result = {
         "fourc_available": FOURC_AVAILABLE,
         "fourc_binary_path": FOURC_BINARY_PATH,
@@ -340,27 +356,25 @@ def check_4c_status():
         "fourc_can_execute": FOURC_CAN_EXECUTE,
         "mesh_tools_available": MESH_TOOLS_AVAILABLE if 'MESH_TOOLS_AVAILABLE' in dir() else False,
         "sb3_available": SB3_AVAILABLE,
-        "binary_version": None,
+        "binary_version": FOURC_VERSION_OUTPUT if 'FOURC_VERSION_OUTPUT' in dir() else None,
         "ld_library_path": os.environ.get("LD_LIBRARY_PATH", "not set"),
+        "path": os.environ.get("PATH", "not set"),
         "error": None,
-        "debug_info": {}
+        "debug_info": {},
+        "recommendation": None
     }
     
-    # Try to get version and more debug info
-    if FOURC_BINARY_EXISTS:
-        try:
-            version_output = subprocess.run(
-                [FOURC_BINARY_PATH, "--version"], 
-                capture_output=True, 
-                text=True, 
-                timeout=10
-            )
-            result["binary_version"] = version_output.stdout.strip() or version_output.stderr.strip()
-            result["debug_info"]["version_returncode"] = version_output.returncode
-        except Exception as e:
-            result["error"] = f"Could not get version: {str(e)}"
+    # Add recommendation based on status
+    if not FOURC_BINARY_EXISTS:
+        result["recommendation"] = "4C binary not found. Check Dockerfile COPY commands."
+    elif not FOURC_CAN_EXECUTE:
+        result["recommendation"] = "4C binary exists but cannot execute (missing shared libraries). Use 4C Docker image as base instead of multi-stage copy."
+    elif not FOURC_AVAILABLE:
+        result["recommendation"] = "4C binary works but FourCSimulator failed to initialize. Check autostent package."
+    else:
+        result["recommendation"] = "4C is fully operational!"
     
-    # Check library dependencies
+    # Check library dependencies (live check)
     if FOURC_BINARY_EXISTS:
         try:
             ldd_output = subprocess.run(
@@ -369,17 +383,11 @@ def check_4c_status():
                 text=True,
                 timeout=10
             )
-            missing_libs = [line for line in ldd_output.stdout.split('\n') if 'not found' in line]
+            missing_libs = [line.strip() for line in ldd_output.stdout.split('\n') if 'not found' in line]
             result["debug_info"]["missing_libs"] = missing_libs if missing_libs else "none"
+            result["debug_info"]["missing_lib_count"] = len(missing_libs) if missing_libs else 0
         except Exception as e:
             result["debug_info"]["ldd_error"] = str(e)
-    
-    # Also check if /usr/local/lib has the required libs
-    try:
-        lib_contents = list(Path("/usr/local/lib").glob("*4C*")) if Path("/usr/local/lib").exists() else []
-        result["debug_info"]["4c_libs_in_usr_local"] = [str(p) for p in lib_contents]
-    except Exception as e:
-        result["debug_info"]["lib_check_error"] = str(e)
     
     return result
 

@@ -1,46 +1,31 @@
 # Railway 4C Backend
-# Multi-stage build: 4C binaries + Python API server
+# Use 4C image as base (has all required dependencies) and add Python API on top
 
-FROM ghcr.io/4c-multiphysics/4c:main AS fourc
+FROM ghcr.io/4c-multiphysics/4c:main
 
-# Python API stage
-FROM python:3.11-slim
+# Switch to root for package installation
+USER root
 
-# Install dependencies (including debugging tools)
+# Install Python and pip (4C image is Ubuntu-based)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgomp1 \
-    libopenmpi-dev \
-    binutils \
+    python3 \
+    python3-pip \
+    python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy 4C binary from official image
-COPY --from=fourc /home/user/4C/build/4C /usr/local/bin/fourc
-RUN chmod +x /usr/local/bin/fourc
+# Create symlink for fourc binary in standard path
+RUN ln -sf /home/user/4C/build/4C /usr/local/bin/fourc && \
+    chmod +x /usr/local/bin/fourc
 
-# Copy 4C shared library
-COPY --from=fourc /home/user/4C/build/lib4C.so /usr/local/lib/
-
-# Copy ALL potentially needed libraries from 4C image
-COPY --from=fourc /usr/lib/x86_64-linux-gnu/libmpi* /usr/lib/x86_64-linux-gnu/
-COPY --from=fourc /usr/lib/x86_64-linux-gnu/libopen* /usr/lib/x86_64-linux-gnu/ 
-COPY --from=fourc /usr/lib/x86_64-linux-gnu/libhwloc* /usr/lib/x86_64-linux-gnu/
-COPY --from=fourc /usr/lib/x86_64-linux-gnu/libevent* /usr/lib/x86_64-linux-gnu/
-
-# Update library cache and set LD_LIBRARY_PATH
-RUN ldconfig /usr/local/lib /usr/lib/x86_64-linux-gnu
-ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/lib/x86_64-linux-gnu
-
-# Verify 4C binary is accessible (will fail build if not)
+# Verify 4C works (this will fail the build if deps are missing)
 RUN echo "=== Verifying 4C binary ===" && \
-    ls -la /usr/local/bin/fourc && \
-    ldd /usr/local/bin/fourc || echo "ldd check complete" && \
-    /usr/local/bin/fourc --version || echo "Version check (may fail without full deps)"
+    fourc --version || echo "4C version check complete"
 
 # Set working directory
 WORKDIR /app
 
 # Install Python dependencies
-RUN pip install --no-cache-dir \
+RUN pip3 install --no-cache-dir --break-system-packages \
     fastapi \
     uvicorn[standard] \
     pydantic \
@@ -51,7 +36,7 @@ RUN pip install --no-cache-dir \
 
 # Copy autostent package (for 4C interface)
 COPY autostent/ ./autostent/
-RUN pip install -e ./autostent
+RUN pip3 install --no-cache-dir --break-system-packages -e ./autostent
 
 # Copy application code
 COPY railway/api_server.py .
@@ -64,6 +49,10 @@ EXPOSE 8080
 # Environment variables
 ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
+ENV PATH="/home/user/4C/build:${PATH}"
 
-# Run with uvicorn
-CMD ["uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "8080"]
+# Run as non-root user for security (use the user from 4C image)
+USER user
+
+# Run with uvicorn (use python3 explicitly)
+CMD ["python3", "-m", "uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "8080"]

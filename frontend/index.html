@@ -21,6 +21,12 @@
             background: white;
             border: 1px solid #e0e0e0;
             border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        /* Prevent Plotly charts from overflowing on first render */
+        .js-plotly-plot, .plotly {
+            max-width: 100% !important;
         }
 
         .param-row {
@@ -366,14 +372,14 @@
             </div>
 
             <!-- Comparison Charts -->
-            <div v-show="comparisonDone" class="grid grid-cols-2 gap-6">
-                <div>
+            <div v-show="comparisonDone" class="grid grid-cols-2 gap-6 overflow-hidden">
+                <div class="min-w-0">
                     <div class="text-xs text-gray-500 mb-1 uppercase">Box Plot Comparison</div>
-                    <div id="boxplot-chart" style="height: 450px;"></div>
+                    <div id="boxplot-chart" style="height: 450px; width: 100%;"></div>
                 </div>
-                <div>
+                <div class="min-w-0">
                     <div class="text-xs text-gray-500 mb-1 uppercase">Reward Distribution</div>
-                    <div id="histogram-chart" style="height: 450px;"></div>
+                    <div id="histogram-chart" style="height: 450px; width: 100%;"></div>
                 </div>
             </div>
 
@@ -889,11 +895,19 @@
                             comparisonPhase.value = 'Complete';
 
                             // Render charts and show results
-                            requestAnimationFrame(() => {
+                            // First show the container, then render charts after layout settles
+                            comparing.value = false;
+                            comparisonDone.value = true;
+                            
+                            // Wait for Vue to update DOM and browser to calculate layout
+                            setTimeout(() => {
                                 updateComparisonCharts();
-                                comparing.value = false;
-                                comparisonDone.value = true;
-                            });
+                                // Force resize after initial render to fix any overflow
+                                setTimeout(() => {
+                                    Plotly.Plots.resize('boxplot-chart');
+                                    Plotly.Plots.resize('histogram-chart');
+                                }, 100);
+                            }, 50);
                         }
                     }, 16); // ~60fps
                 }
@@ -933,6 +947,7 @@
                         whiskerwidth: 0.7,
                         boxpoints: 'outliers'
                     }], {
+                        autosize: true,
                         margin: { l: 70, r: 30, t: 50, b: 60 },
                         title: { text: 'Performance Comparison', font: { size: 14, family: 'SF Mono, monospace', color: '#333' } },
                         yaxis: {
@@ -982,6 +997,7 @@
                         },
                         xbins: { start: minReward, end: maxReward, size: binSize }
                     }], {
+                        autosize: true,
                         margin: { l: 60, r: 30, t: 50, b: 60 },
                         title: { text: 'Reward Distribution', font: { size: 14, family: 'SF Mono, monospace', color: '#333' } },
                         xaxis: {
