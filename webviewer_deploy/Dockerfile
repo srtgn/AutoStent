@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y \
     libgl1 \
     libxrender1 \
     libglib2.0-0 \
+    xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -20,4 +21,4 @@ COPY . .
 ENV PYTHONPATH=/app/src
 
 # Run the webviewer
-CMD ["python", "-m", "fourc_webviewer.main"]
+CMD ["xvfb-run", "-a", "python", "-m", "fourc_webviewer.main"]
