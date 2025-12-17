@@ -29,6 +29,25 @@ except ImportError:
     SB3_AVAILABLE = False
     print("WARNING: stable-baselines3 not installed, RL training disabled")
 
+# Try to import 4C interface
+try:
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from autostent.simulation.fourc_interface import (
+        FourCSimulator,
+        SimulationConfig,
+        SimulationResult
+    )
+    # Initialize simulator
+    fourc_sim = FourCSimulator(use_docker=False)
+    FOURC_AVAILABLE = True
+    print("✓ 4C simulator initialized successfully")
+except Exception as e:
+    FOURC_AVAILABLE = False
+    fourc_sim = None
+    print(f"WARNING: 4C solver not available: {e}")
+    print("         Real 4C mode will fallback to mockup")
+
 app = FastAPI(
     title="4C + RL API",
     description="Run 4C FEM simulations and PPO RL training for stent design",
@@ -213,6 +232,7 @@ class StentParams(BaseModel):
 class SimulationRequest(BaseModel):
     params: StentParams
     timeout: int = 300
+    use_docker: bool = False  # Toggle for real 4C vs mockup
 
 class TrainRequest(BaseModel):
     steps: int = 2000
@@ -227,24 +247,149 @@ def root():
 def health():
     return {"status": "healthy"}
 
-@app.post("/simulate/sync")
-def run_simulation_sync(request: SimulationRequest):
-    """Run simulation synchronously."""
-    params = request.params
-    d, t, n = params.diameter, params.strut_thickness, params.num_struts
+# ===== HELPER FUNCTIONS =====
+def generate_4c_yaml(params: StentParams, output_path: Path):
+    """Generate simplified 4C YAML input file for stent simulation."""
+    yaml_content = f"""# Automated stent simulation
+PROBLEM_SIZE: 3
+PROBLEM_TYPE: Structure
+
+STRUCTURAL:
+  NEWMARK:
+    TIMESTEP: 0.001
+    NUMSTEP: 100
+    LOADSTEP_SIZE: 0.01
+
+MATERIALS:
+  MAT 1:
+    TYPE: ElastHyper
+    YOUNG: 200000.0  # MPa (NiTi)
+    NUE: 0.3
+    DENS: 6.45e-9  # kg/mm^3
+
+GEOMETRY:
+  # Simplified - would need actual mesh generation
+  ELEMENT_BLOCKS:
+    - ID: 1
+      MATERIAL: 1
+      SHAPE: hex8
+
+BOUNDARY_CONDITIONS:
+  DIRICHLET:
+    - NODE_SETS: [1]
+      DOF: [1, 2, 3]
+      VALUE: 0.0
+  
+  NEUMANN:
+    - NODE_SETS: [2]
+      DOF: [2]  # Radial pressure
+      VALUE: {params.diameter * 0.1}  # Pressure based on diameter
+
+OUTPUT:
+  VTK:
+    INTERVAL: 10
+    FIELDS: ['stress', 'displacement', 'strain']
+"""
+    output_path.write_text(yaml_content)
+
+
+def run_real_4c_simulation(params: StentParams):
+    """Run actual 4C FEM simulation."""
+    if not FOURC_AVAILABLE:
+        return {
+            "success": False,
+            "error": "4C solver not available. Install 'fourc' binary or use Docker image.",
+            "help": "See: https://github.com/4C-multiphysics/4C",
+            "fallback_used": True
+        }
+    
+    try:
+        # Create temporary directory
+        work_dir = Path(tempfile.mkdtemp(prefix="4c_sim_"))
+        yaml_path = work_dir / "input.4C.yaml"
+        output_dir = work_dir / "output"
+        
+        # Generate 4C input file
+        generate_4c_yaml(params, yaml_path)
+        
+        # Configure simulation
+        config = SimulationConfig(
+            yaml_input_path=yaml_path,
+            output_directory=output_dir,
+            timeout=300.0,
+            verbose=False
+        )
+        
+        # Run 4C simulation
+        print(f"Running real 4C simulation for: {params}")
+        result = fourc_sim.run_simulation(config)
+        
+        if not result.success:
+            return {
+                "success": False,
+                "error": result.error_message or "4C simulation failed",
+                "log_path": str(result.log_path) if result.log_path else None
+            }
+        
+        # Return results
+        return {
+            "success": True,
+            "simulation_id": f"4c_{int(time.time()*1000)}",
+            "status": "completed",
+            "result": {
+                "max_stress": float(result.max_von_mises_stress),
+                "max_displacement": float(result.max_displacement),
+                "converged": result.converged,
+                "source": "real_4c_fem",
+                "num_iterations": result.num_iterations
+            },
+            "metadata": result.metadata
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"4C execution error: {str(e)}",
+            "fallback_used": True
+        }
+
+
+def run_mockup_simulation(params: StentParams):
+    """Run fast analytical simulation (mockup)."""
+    d, t = params.diameter, params.strut_thickness
     stress = 100 * (0.12 / max(t, 0.05))**1.5 * (10.0 / max(d, 5))**0.5
     displacement = 0.3 * (params.length / 20) * (0.12 / max(t, 0.05))
     
     return {
         "success": True,
-        "simulation_id": f"sim_{int(time.time()*1000)}",
+        "simulation_id": f"mockup_{int(time.time()*1000)}",
         "status": "completed",
         "result": {
             "max_stress": round(stress, 2),
             "max_displacement": round(displacement, 4),
-            "converged": True
+            "converged": True,
+            "source": "analytical_mockup"
         }
     }
+
+
+# ===== SIMULATION ENDPOINTS =====
+@app.post("/simulate/sync")
+def run_simulation_sync(request: SimulationRequest):
+    """Run a single synchronous simulation (mockup or real 4C)."""
+    use_real_4c = request.use_docker and FOURC_AVAILABLE
+    
+    if use_real_4c:
+        print("Using real 4C FEM solver")
+        result = run_real_4c_simulation(request.params)
+        # If real 4C fails, fallback to mockup
+        if not result.get("success") and result.get("fallback_used"):
+            print("4C failed, falling back to mockup")
+            result = run_mockup_simulation(request.params)
+            result["warning"] = "Real 4C unavailable, used analytical mockup"
+        return result
+    else:
+        return run_mockup_simulation(request.params)
 
 
 # ===== RL TRAINING ENDPOINTS =====
