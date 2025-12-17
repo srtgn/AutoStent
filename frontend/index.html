@@ -747,11 +747,19 @@
                 }
 
                 function runComparison() {
+                    // Validate we have training data
+                    if (!episodeRewards.value || episodeRewards.value.length === 0) {
+                        alert('No training data available. Please complete RL training first before running comparison.');
+                        return;
+                    }
+
                     comparing.value = true;
                     comparisonProgress.value = 0;
                     comparisonPhase.value = 'Running Random Baseline';
                     comparisonDone.value = false;
                     randomRewards.value = [];
+
+                    console.log('Starting comparison with', episodeRewards.value.length, 'episodes');
 
                     // Use ALREADY COLLECTED rewards from training
                     const numEpisodes = Math.min(comparisonEpisodes.value, 50); // Cap at 50 for speed
