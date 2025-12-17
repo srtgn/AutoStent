@@ -324,10 +324,10 @@
                     <input type="number" v-model.number="comparisonEpisodes" min="5" max="50" step="5"
                         :disabled="comparing" style="width: 70px; padding: 6px 8px;">
                 </div>
-                <button @click="runComparison" :disabled="comparing || steps === 0" class="btn btn-primary">
+                <button @click="runComparison" :disabled="comparing || episodes === 0" class="btn btn-primary">
                     {{ comparing ? 'Running...' : 'Run Comparison' }}
                 </button>
-                <span v-if="steps === 0" class="text-xs text-gray-400">Train agent first</span>
+                <span v-if="episodes === 0" class="text-xs text-gray-400">Train agent (>=1 episode) first</span>
 
                 <!-- Progress bar for comparison -->
                 <div v-if="comparing" class="flex-1 max-w-xs">

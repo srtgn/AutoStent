@@ -123,18 +123,22 @@ if SB3_AVAILABLE:
             reward = self.locals.get('rewards', [0])[0]
             self.ep_reward += reward
             
-            if self.n_calls % 20 == 0:
+            if self.n_calls % 2 == 0:  # Log every 2 steps for smoother curves
                 with state_lock:
                     training_state["current_step"] = self.n_calls
                     training_state["progress"] = self.n_calls / self.total_steps
                     training_state["rewards"].append(float(reward))
                     try:
-                        env = self.model.env.envs[0]
+                        # Access unwrapped environment to get params
+                        env = self.model.env.envs[0].unwrapped
                         if hasattr(env, 'params'):
                             training_state["current_params"] = dict(env.params)
-                            stress = 100 * (0.12 / max(env.params['strut_thickness'], 0.05))**1.5
+                            # Use same stress formula as in step()
+                            d, t, n = env.params['diameter'], env.params['strut_thickness'], env.params['num_struts']
+                            stress = 100 * (0.12 / max(t, 0.05))**1.5 * (10.0 / max(d, 5))**0.5 * (12 / max(n, 6))**0.8
                             training_state["stress_history"].append(float(stress))
-                    except:
+                    except Exception as e:
+                        print(f"Callback error: {e}")
                         pass
             
             if self.locals.get('dones', [False])[0]:
