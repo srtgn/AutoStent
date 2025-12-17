@@ -364,15 +364,15 @@
             <div v-show="comparisonDone" class="grid grid-cols-2 gap-6">
                 <div>
                     <div class="text-xs text-gray-500 mb-1 uppercase">Box Plot Comparison</div>
-                    <div id="boxplot-chart" style="height: 280px;"></div>
+                    <div id="boxplot-chart" style="height: 450px;"></div>
                 </div>
                 <div>
                     <div class="text-xs text-gray-500 mb-1 uppercase">Reward Distribution</div>
-                    <div id="histogram-chart" style="height: 280px;"></div>
+                    <div id="histogram-chart" style="height: 450px;"></div>
                 </div>
             </div>
 
-            <div v-else class="text-center py-12 text-gray-400">
+            <div v-show="!comparisonDone" class="text-center py-12 text-gray-400">
                 <p>Train the agent, then click "Run Comparison" to evaluate performance</p>
             </div>
         </div>
