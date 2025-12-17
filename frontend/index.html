@@ -144,26 +144,23 @@
             </div>
             <div class="flex items-center gap-6">
                 <!-- 4C Docker Mode Toggle -->
-                <div class="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg">
-                    <span class="text-xs text-gray-500 uppercase tracking-wide">4C Mode:</span>
-                    <label class="flex items-center gap-2 cursor-pointer">
+                <div class="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg border border-gray-200">
+                    <label class="flex items-center gap-2 cursor-pointer select-none">
                         <input type="checkbox" v-model="useDocker" :disabled="training" class="w-4 h-4 accent-blue-600">
-                        <span class="text-sm font-medium" :class="useDocker ? 'text-blue-600' : 'text-gray-500'">
-                            {{ useDocker ? 'Docker (Real 4C)' : 'Mock Physics' }}
-                        </span>
+                        <span class="text-sm font-medium text-gray-700">Use Real 4C Solver (Cloud)</span>
                     </label>
-                    <span v-if="useDocker && !dockerAvailable" class="text-xs text-amber-500">(x86 only)</span>
                 </div>
 
                 <!-- RL Toggle -->
-                <label class="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" v-model="useRealRL" :disabled="training" class="w-4 h-4">
-                    <span class="text-sm" :class="useRealRL ? 'text-green-600 font-semibold' : 'text-gray-500'">
-                        {{ useRealRL ? 'Real RL (PPO)' : 'Simulated RL' }}
-                    </span>
-                </label>
-                <span v-if="useRealRL && !backendConnected" class="text-xs text-red-500">Backend not running</span>
-                <span v-if="useRealRL && backendConnected" class="text-xs text-green-500">Backend connected</span>
+                <div class="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg border border-gray-200">
+                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                        <input type="checkbox" v-model="useRealRL" :disabled="training"
+                            class="w-4 h-4 accent-green-600">
+                        <span class="text-sm font-medium text-gray-700">Use Real RL (PPO)</span>
+                    </label>
+                    <span v-if="useRealRL && !backendConnected" class="text-xs text-red-500 font-medium">Offline</span>
+                    <span v-if="useRealRL && backendConnected" class="text-xs text-green-600 font-medium">Online</span>
+                </div>
             </div>
         </header>
 
