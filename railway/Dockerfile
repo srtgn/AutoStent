@@ -36,7 +36,7 @@ COPY autostent/ ./autostent/
 RUN pip install -e ./autostent
 
 # Copy application code
-COPY api_server.py .
+COPY railway/api_server.py .
 
 # Expose port
 EXPOSE 8080
