@@ -571,8 +571,9 @@
                 }
 
                 async function trainAgent() {
-                    // Check if using real RL
-                    if (useRealRL.value) {
+                    // Start backend training if EITHER "Real RL" OR "4C Solver" is checked
+                    // Logic: If user wants 4C, they MUST use the backend, so we force backend mode.
+                    if (useRealRL.value || useDocker.value) {
                         const connected = await checkBackend();
                         if (!connected) {
                             alert('Backend not running! Start it with: python rl_backend.py');
