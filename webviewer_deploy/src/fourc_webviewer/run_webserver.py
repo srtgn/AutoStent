@@ -26,7 +26,16 @@ def run_webviewer(fourc_yaml_file=None):
     # start the server after everything is set up
     print("Starting server loop...", flush=True)
     try:
-        fourc_webserver.server.start(port=SERVER_PORT, host="0.0.0.0", timeout=0)
+        # Configure for Railway reverse proxy:
+        # - open_browser=False: Don't try to open browser in containerized env
+        # - show_connection_info=False: Suppress console output
+        fourc_webserver.server.start(
+            port=SERVER_PORT, 
+            host="0.0.0.0", 
+            timeout=0,
+            open_browser=False,
+            show_connection_info=False
+        )
         print("Server loop finished.", flush=True)
     except Exception as e:
         print(f"Server crashed with error: {e}", flush=True)

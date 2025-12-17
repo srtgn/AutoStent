@@ -9,3 +9,6 @@ healthcheckTimeout = 100
 [env]
 PORT = "8080"
 jupyter_platform_dirs = "1"
+# Trame configuration for Railway
+TRAME_CLIENT_TYPE = "vue3"
+WSLINK_LAUNCHER_MODE = "none"
