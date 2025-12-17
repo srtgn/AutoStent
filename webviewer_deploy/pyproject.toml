@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fourc_webviewer"
+version = "2.0"
+description = "4C webviewer"
+readme = "README.md"
+requires-python = ">=3.12"
+dynamic = ["dependencies"]
+
+[project.scripts]
+fourc_webviewer = "fourc_webviewer.cli_utils:main"
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+# External tools
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = '-m "not gui"'                     # deactivate tests that require a GUI
+markers = ["gui: Tests that require a GUI."]

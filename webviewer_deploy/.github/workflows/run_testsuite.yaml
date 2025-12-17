@@ -1,0 +1,42 @@
+name: Testsuite
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+  schedule:
+    - cron: "0 3 * * *" # time zone is UTC
+
+jobs:
+  run_pytest:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -l {0}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Set up virtual environment
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          conda-remove-defaults: true
+          channels: conda-forge
+          activate-environment: 4c-webviewer
+          python-version: 3.12
+      - name: Install requirements
+        shell: bash -el {0}
+        run: |
+          conda activate 4c-webviewer
+          pip install -e .
+      - name: Run pytest
+        shell: bash -el {0}
+        run: |
+          conda activate 4c-webviewer
+          pytest --color=yes -v

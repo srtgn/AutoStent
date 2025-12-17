@@ -1,0 +1,19 @@
+trame
+trame-vuetify
+trame-vtk
+trame-components
+trame-plotly
+plotly
+pandas
+pyvista
+vtk==9.4.2
+numpy
+fourcipp
+lnmmeshio>=5.6.3
+numexpr
+netCDF4
+
+
+# development
+pytest
+pre-commit

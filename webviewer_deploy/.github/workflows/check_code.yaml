@@ -1,0 +1,45 @@
+name: Code quality
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+  schedule:
+    - cron: "0 3 * * *" # time zone is UTC
+
+jobs:
+  fourc-webviewer-code-check:
+    name: Code check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Set up virtual environment
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          conda-remove-defaults: true
+          channels: conda-forge
+          activate-environment: 4c-webviewer
+          python-version: 3.12
+      - name: Install requirements
+        shell: bash -el {0}
+        run: |
+          conda activate 4c-webviewer
+          pip install -e .
+          pip install pre-commit
+      - name: Run code-checks
+        shell: bash -el {0}
+        run: |
+          conda activate 4c-webviewer
+          if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
+            SKIP=no-commit-to-branch pre-commit run --all-files
+          else
+            pre-commit run --all-files
+          fi
