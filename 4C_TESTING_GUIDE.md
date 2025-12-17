@@ -105,18 +105,28 @@ ls -lh /tmp/4c_test
 
 ---
 
+## Important: Railway Environment
+
+**Key Insight**: On Railway, we're **already IN the 4C Docker image** (FROM ghcr.io/4c-multiphysics/4c:main), so:
+- ✅ **NO need for `docker run`** - we call the binary directly
+- ✅ Binary is at `/home/user/4C/build/4C` or `/usr/local/bin/fourc`
+- ✅ All 4C libraries are already available
+- ❌ **Docker-in-Docker is NOT available** on Railway (that's why the test failed)
+
+The `/test-4c-docker` endpoint now calls the binary directly, not Docker commands.
+
 ## Current Status
 
 ### ✅ What Works:
-- 4C Docker image is available and can run
+- 4C binary is available in the Railway container
 - YAML format now matches 4C's requirements
 - VTU file generation added (if pyvista available)
-- Test endpoints created
+- Test endpoints created (now use binary directly)
 
 ### ⚠️ What Needs Checking:
 1. **Mesh tools import**: `mesh_generator.py` must be in Docker image
 2. **pyvista availability**: Must be installed for VTU generation
-3. **4C simulation**: Need to test if simulations actually run
+3. **4C simulation**: Need to test if simulations actually run with proper YAML
 
 ---
 

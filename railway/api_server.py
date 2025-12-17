@@ -136,10 +136,12 @@ try:
     if FOURC_CAN_EXECUTE:
         fourc_sim = FourCSimulator(
             fourc_executable=FOURC_BINARY_PATH,
-            use_docker=False
+            use_docker=False  # We're already IN the 4C Docker image, so call binary directly
         )
         FOURC_AVAILABLE = True
         print("✓ 4C simulator initialized successfully")
+        print(f"  Using binary: {FOURC_BINARY_PATH}")
+        print(f"  Mode: Direct execution (we're in 4C image, no docker run needed)")
     else:
         fourc_sim = None
         FOURC_AVAILABLE = False
@@ -1039,36 +1041,85 @@ def test_4c_simulation(request: SimulationRequest):
 
 @app.get("/test-4c-docker")
 def test_4c_docker_direct():
-    """Test 4C Docker image directly using a tutorial file from the image."""
+    """Test 4C binary directly (we're already in 4C Docker image, so no need for docker run)."""
     import subprocess
     import tempfile
+    import shutil
     
-    print("Testing 4C Docker image with tutorial file...")
+    print("Testing 4C binary directly (we're in 4C image)...")
+    
+    # Check if fourc binary exists
+    fourc_bin = shutil.which("fourc") or "/usr/local/bin/fourc" or "/home/user/4C/build/4C"
+    
+    # Try to find tutorial file in the image
+    tutorial_paths = [
+        "/home/user/4C/tests/input_files/tutorial_solid_vtu.4C.yaml",
+        "/home/user/4C/tests/input_files/tutorial_solid_vtu.vtu",
+    ]
+    
+    tutorial_yaml = None
+    tutorial_vtu = None
+    for path in tutorial_paths:
+        if Path(path).exists():
+            if path.endswith(".yaml"):
+                tutorial_yaml = path
+            elif path.endswith(".vtu"):
+                tutorial_vtu = path
+            print(f"✓ Found: {path}")
     
     # Create temp directory for output
     work_dir = Path(tempfile.mkdtemp(prefix="4c_test_"))
     output_dir = work_dir / "output"
     output_dir.mkdir()
     
+    # Copy tutorial files to work dir if found
+    if tutorial_yaml:
+        import shutil
+        shutil.copy(tutorial_yaml, work_dir / "input.4C.yaml")
+        tutorial_yaml = work_dir / "input.4C.yaml"
+    if tutorial_vtu:
+        shutil.copy(tutorial_vtu, work_dir / tutorial_vtu.name)
+    
     try:
-        # Run 4C with tutorial file from the Docker image
+        if not tutorial_yaml or not Path(fourc_bin).exists():
+            # Fallback: create a minimal test YAML
+            test_yaml = work_dir / "test.4C.yaml"
+            test_yaml.write_text("""TITLE: Minimal test
+PROBLEM TYPE:
+  PROBLEMTYPE: Structure
+STRUCTURAL DYNAMIC:
+  DYNAMICTYPE: Statics
+  TIMESTEP: 1.0
+  NUMSTEP: 1
+MATERIALS:
+  - MAT: 1
+    MAT_Struct_StVenantKirchhoff:
+      YOUNG: 200000.0
+      NUE: 0.3
+""")
+            tutorial_yaml = test_yaml
+            print("Created minimal test YAML")
+        
+        # Run 4C binary directly (we're already in the image!)
         cmd = [
-            "docker", "run", "--rm",
-            "--platform", "linux/amd64",
-            "-v", f"{work_dir}:/workspace",
-            "-w", "/workspace",
-            "ghcr.io/4c-multiphysics/4c:main",
-            "/home/user/4C/build/4C",
-            "/home/user/4C/tests/input_files/tutorial_solid_vtu.4C.yaml",
-            "test_output"
+            fourc_bin,
+            str(tutorial_yaml),
+            "-o",
+            str(output_dir)
         ]
         
         print(f"Running: {' '.join(cmd)}")
+        print(f"  Binary: {fourc_bin} (exists: {Path(fourc_bin).exists()})")
+        print(f"  YAML: {tutorial_yaml} (exists: {Path(tutorial_yaml).exists()})")
+        
+        env = os.environ.copy()
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=120
+            timeout=120,
+            cwd=str(work_dir),
+            env=env
         )
         
         # Check output files
@@ -1077,11 +1128,14 @@ def test_4c_docker_direct():
         return {
             "success": result.returncode == 0,
             "returncode": result.returncode,
-            "stdout": result.stdout[-1000:] if result.stdout else "",
-            "stderr": result.stderr[-1000:] if result.stderr else "",
+            "stdout": result.stdout[-2000:] if result.stdout else "",
+            "stderr": result.stderr[-2000:] if result.stderr else "",
             "output_files": [f.name for f in output_files],
             "output_dir": str(output_dir),
-            "command": " ".join(cmd)
+            "command": " ".join(cmd),
+            "fourc_binary": fourc_bin,
+            "binary_exists": Path(fourc_bin).exists(),
+            "yaml_exists": Path(tutorial_yaml).exists() if tutorial_yaml else False
         }
     except subprocess.TimeoutExpired:
         return {
@@ -1090,9 +1144,11 @@ def test_4c_docker_direct():
             "output_files": [f.name for f in output_dir.glob("*")] if output_dir.exists() else []
         }
     except Exception as e:
+        import traceback
         return {
             "success": False,
             "error": str(e),
+            "traceback": traceback.format_exc(),
             "output_files": []
         }
 

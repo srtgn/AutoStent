@@ -400,7 +400,7 @@
                     crownHeight: 1.0
                 });
 
-                const metrics = ref({ stress: 150, displacement: 0.5 });
+                const metrics = ref({ stress: 0, displacement: 0 });
                 const currentReward = ref(0);
                 const episodeRewards = ref([]);
                 const stressHistory = ref([]);
@@ -443,18 +443,9 @@
                         // After training, show last displacement
                         return displacementHistory.value[displacementHistory.value.length - 1];
                     } else {
-                        // No training done - calculate from material properties
-                        // Based on beam theory: displacement ~ (load * length^3) / (E * I)
-                        // Simplified for stent: displacement ~ (pressure * length) / (E * thickness^2)
-                        const E = 200000; // Young's modulus in MPa (NiTi)
-                        const t = params.value.strutThickness;
-                        const L = params.value.length;
-                        const d = params.value.diameter;
-                        // Radial pressure approximation
-                        const pressure = d * 0.1; // MPa
-                        // Displacement formula based on material strength
-                        const displacement = (pressure * L) / (E * Math.pow(t, 2)) * 1000; // Convert to mm
-                        return Math.max(0.001, Math.min(2.0, displacement)); // Clamp to reasonable range
+                        // No training done - use computed metrics (from computeMetrics)
+                        // This ensures mockup mode shows calculated displacement
+                        return metrics.value.displacement;
                     }
                 });
                 const episodes = ref(0);
@@ -561,7 +552,21 @@
 
                             if (data.is_training) {
                                 training.value = true;
-                                progress.value = data.progress;
+                                // Ensure progress only goes forward (never backward)
+                                const newProgress = Math.min(1.0, Math.max(0.0, data.progress || 0));
+                                if (newProgress >= progress.value) {
+                                    progress.value = newProgress;
+                                } else {
+                                    // Progress went backward - keep previous value unless it's a significant jump
+                                    // This prevents flickering when backend resets or has timing issues
+                                    if (newProgress > progress.value - 0.05) {
+                                        // Small backward jump - ignore (likely timing)
+                                        // Keep current progress
+                                    } else {
+                                        // Large backward jump - might be reset, update
+                                        progress.value = newProgress;
+                                    }
+                                }
                                 // Use logged_steps if available (matches data points), else current_step
                                 steps.value = data.logged_steps !== undefined ? data.logged_steps : data.current_step;
                                 episodes.value = data.episodes;
@@ -598,9 +603,13 @@
                                     episodeRewards.value = data.episode_rewards;
                                 }
                                 
-                                // Ensure progress doesn't exceed 100% and is consistent
+                                // Ensure progress only goes forward (never backward)
                                 if (data.progress !== undefined) {
-                                    progress.value = Math.min(1.0, Math.max(0.0, data.progress));
+                                    const newProgress = Math.min(1.0, Math.max(0.0, data.progress));
+                                    if (newProgress >= progress.value) {
+                                        progress.value = newProgress;
+                                    }
+                                    // If progress went backward, keep previous (might be backend reset)
                                 }
 
                                 updateStent3D();
@@ -668,10 +677,16 @@
                     const crownFactor = 1.0 + 0.3 * Math.abs(h - 1.0);
 
                     const stress = 100 * thicknessFactor * diameterFactor * strutFactor * crownFactor;
-                    const displacement = 0.3 * (params.value.length / 20) * (optT / Math.max(t, 0.05));
+                    // Displacement calculation for mockup mode
+                    // Based on beam theory for cylindrical stent
+                    const E = 200000; // Young's modulus in MPa (NiTi)
+                    const r = d / 2.0; // radius in mm
+                    const pressure = 0.05 * d; // Radial pressure in MPa
+                    const strut_factor = Math.sqrt(n / 12.0); // Normalize to 12 struts
+                    const displacement = (pressure * r * Math.pow(params.value.length, 2)) / (E * t * strut_factor); // mm
 
-                    metrics.value.stress = Math.max(50, Math.min(400, stress));
-                    metrics.value.displacement = Math.max(0.1, Math.min(2, displacement));
+                    metrics.value.stress = Math.max(0, Math.min(400, stress));
+                    metrics.value.displacement = Math.max(0, Math.min(2, displacement));
 
                     currentReward.value = -0.4 * (metrics.value.stress / 200) - 0.2 * metrics.value.displacement;
                     return currentReward.value;
@@ -1208,15 +1223,16 @@
                 }
 
                 watch(params, () => {
-                    // Only update 3D view when params change, don't compute metrics
-                    // Metrics should only come from training results
+                    // When not training, update metrics for mockup mode
                     if (!training.value) {
+                        computeMetrics(); // Calculate displacement for mockup mode
                         updateStent3D();
                     }
                 }, { deep: true });
 
                 onMounted(() => {
-                    // Don't compute metrics on mount - show 0 until training starts
+                    // Compute initial metrics for mockup mode (shows calculated displacement)
+                    computeMetrics();
                     updateStent3D();
                     updateCharts();
                     // Check backend connection periodically

@@ -1,22 +1,27 @@
 #!/bin/bash
 # Step-by-step test script to verify 4C Docker image works
+# NOTE: This script is for LOCAL testing. On Railway, we're already IN the 4C image!
 
 echo "=========================================="
-echo "4C Docker Image Test Script"
+echo "4C Docker Image Test Script (Local)"
 echo "=========================================="
 echo ""
+echo "NOTE: On Railway, we're already IN the 4C Docker image,"
+echo "      so we call the binary directly (no 'docker run' needed)"
+echo ""
 
-# Step 1: Check if Docker is available
-echo "Step 1: Checking Docker..."
+# Step 1: Check if Docker is available (for local testing)
+echo "Step 1: Checking Docker (for local testing)..."
 if ! command -v docker &> /dev/null; then
-    echo "❌ Docker is not installed or not in PATH"
+    echo "⚠ Docker not found - this script requires Docker for local testing"
+    echo "  On Railway, Docker is not needed (we're in the image)"
     exit 1
 fi
 echo "✓ Docker found: $(docker --version)"
 echo ""
 
 # Step 2: Pull/check 4C Docker image
-echo "Step 2: Checking 4C Docker image..."
+echo "Step 2: Pulling 4C Docker image..."
 docker pull ghcr.io/4c-multiphysics/4c:main
 if [ $? -ne 0 ]; then
     echo "❌ Failed to pull 4C Docker image"
@@ -61,6 +66,9 @@ fi
 rm -rf "$TEST_OUTPUT"
 echo ""
 echo "=========================================="
-echo "Test complete!"
+echo "Local test complete!"
+echo ""
+echo "On Railway: Use /test-4c-docker endpoint"
+echo "  (calls binary directly, no docker run)"
 echo "=========================================="
 
