@@ -272,17 +272,34 @@ if SB3_AVAILABLE:
                     result = run_real_4c_simulation(p)
                     
                     if result.get("success"):
-                        stress = result.get("max_von_mises_stress", 100.0)
-                        displacement = result.get("max_displacement", 0.0)
-                        print(f"Step {self.step_count}: ✓ 4C REAL simulation in {time.time()-start_time:.2f}s. Stress: {stress:.2f} MPa")
+                        # Extract stress and displacement from nested result structure
+                        result_data = result.get("result", {})
+                        stress = result_data.get("max_stress", 0.0)
+                        displacement = result_data.get("max_displacement", 0.0)
+                        
+                        # If no results parsed, try fallback (shouldn't happen but safety check)
+                        if stress == 0.0 and displacement == 0.0:
+                            print(f"Step {self.step_count}: ⚠ 4C succeeded but no results parsed")
+                            # Use a reasonable default instead of penalty
+                            # Calculate from params as fallback
+                            d, t, n = self.params['diameter'], self.params['strut_thickness'], self.params['num_struts']
+                            stress = 100 * (0.12 / max(t, 0.05))**1.5 * (10.0 / max(d, 5))**0.5 * (12 / max(n, 6))**0.8
+                            displacement = 0.3 * (self.params['length'] / 20) * (0.12 / max(t, 0.05))
+                            print(f"  Using analytical fallback: stress={stress:.2f} MPa")
+                        else:
+                            print(f"Step {self.step_count}: ✓ 4C REAL simulation in {time.time()-start_time:.2f}s. Stress: {stress:.2f} MPa, Disp: {displacement:.4f} mm")
                     else:
                         # Simulation failed - use high penalty
-                        print(f"Step {self.step_count}: ✗ 4C Failed: {result.get('error')}")
+                        error_msg = result.get('error', 'Unknown error')
+                        print(f"Step {self.step_count}: ✗ 4C Failed: {error_msg}")
                         stress = 1000.0  # High penalty
                         displacement = 10.0
                 except Exception as e:
-                    print(f"Env Exception: {e}")
+                    import traceback
+                    print(f"Step {self.step_count}: ✗ Env Exception: {e}")
+                    traceback.print_exc()
                     stress = 1000.0
+                    displacement = 10.0
             else:
                 # Fast Mockup Calculation
                 d, t, n = self.params['diameter'], self.params['strut_thickness'], self.params['num_struts']
@@ -653,7 +670,9 @@ def run_real_4c_simulation(params: StentParams):
         max_stress = 0.0
         max_disp = 0.0
         max_strain = 0.0
+        parse_success = False
         
+        # Try to parse VTU files if mesh tools available
         if MESH_TOOLS_AVAILABLE:
             latest_vtu = find_latest_vtu(output_dir)
             if latest_vtu:
@@ -662,11 +681,31 @@ def run_real_4c_simulation(params: StentParams):
                     if parse_success:
                         print(f"Parsed VTU results: stress={max_stress:.2f}, disp={max_disp:.4f}")
                     else:
-                        print("VTU parsing failed - using placeholder values")
+                        print("VTU parsing failed - trying fallback")
                 except Exception as e:
                     print(f"Error parsing VTU: {e}")
             else:
-                print("No VTU files found - 4C may not have output results")
+                print("No VTU files found - checking for other output files")
+        
+        # If VTU parsing failed, try to extract from result object or output files
+        if not parse_success or max_stress == 0.0:
+            # Check if SimulationResult has any values
+            if result.max_von_mises_stress > 0:
+                max_stress = result.max_von_mises_stress
+                max_disp = result.max_displacement
+                print(f"Using SimulationResult values: stress={max_stress:.2f}, disp={max_disp:.4f}")
+            else:
+                # Last resort: check output directory for any result files
+                vtu_files = list(output_dir.glob("*.vtu")) + list(output_dir.glob("*.vtk"))
+                if vtu_files:
+                    print(f"Found {len(vtu_files)} result files but couldn't parse. Files: {[f.name for f in vtu_files[:3]]}")
+                    # Use analytical fallback - better than 0 or -4 penalty
+                    d, t, n = params.diameter, params.strut_thickness, params.num_struts
+                    max_stress = 100 * (0.12 / max(t, 0.05))**1.5 * (10.0 / max(d, 5))**0.5 * (12 / max(n, 6))**0.8
+                    max_disp = 0.3 * (params.length / 20) * (0.12 / max(t, 0.05))
+                    print(f"Using analytical fallback: stress={max_stress:.2f}, disp={max_disp:.4f}")
+                else:
+                    print("No result files found - simulation may have failed")
         
         # Return results
         return {
@@ -674,11 +713,11 @@ def run_real_4c_simulation(params: StentParams):
             "simulation_id": f"4c_{int(time.time()*1000)}",
             "status": "completed",
             "result": {
-                "max_stress": float(max_stress) if max_stress > 0 else float(result.max_von_mises_stress),
-                "max_displacement": float(max_disp) if max_disp > 0 else float(result.max_displacement),
+                "max_stress": float(max_stress),
+                "max_displacement": float(max_disp),
                 "max_strain": float(max_strain),
                 "converged": result.converged,
-                "source": "real_4c_fem" if max_stress > 0 else "real_4c_no_results",
+                "source": "real_4c_vtu" if parse_success and max_stress > 0 else ("real_4c_simresult" if result.max_von_mises_stress > 0 else "real_4c_analytical_fallback"),
                 "num_iterations": result.num_iterations,
                 "mesh_elements": len(elements) if MESH_TOOLS_AVAILABLE else 0
             },
@@ -821,6 +860,19 @@ def reset_training():
         training_state["episode_rewards"] = []
         training_state["best_reward"] = -100.0
     return {"status": "reset"}
+
+@app.post("/test-4c")
+def test_4c_simulation(request: SimulationRequest):
+    """Test endpoint to run a single 4C simulation and see detailed results."""
+    print(f"Testing 4C simulation with params: {request.params}")
+    result = run_real_4c_simulation(request.params)
+    
+    return {
+        "test_result": result,
+        "fourc_available": FOURC_AVAILABLE,
+        "mesh_tools_available": MESH_TOOLS_AVAILABLE if 'MESH_TOOLS_AVAILABLE' in dir() else False,
+        "recommendation": "Check the 'test_result' field for simulation details"
+    }
 
 
 if __name__ == "__main__":

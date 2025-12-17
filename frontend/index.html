@@ -242,7 +242,7 @@
                     </div>
                     <div class="param-row">
                         <span class="text-gray-600">Reward</span>
-                        <span class="font-medium">{{ currentReward.toFixed(4) }}</span>
+                        <span class="font-medium">{{ displayedReward.toFixed(4) }}</span>
                     </div>
                 </div>
             </div>
@@ -410,6 +410,17 @@
                 const episodeRewards = ref([]);
                 const stressHistory = ref([]);
                 const rewardHistory = ref([]);
+                
+                // Computed: Use last reward from backend history if available, else use local calculation
+                const displayedReward = computed(() => {
+                    if (training.value && rewardHistory.value.length > 0) {
+                        // During training, use the last reward from backend
+                        return rewardHistory.value[rewardHistory.value.length - 1];
+                    } else {
+                        // When not training, use local calculation
+                        return currentReward.value;
+                    }
+                });
                 const episodes = ref(0);
                 const steps = ref(0);
                 const training = ref(false);
@@ -532,12 +543,13 @@
                                 // Backend sends full arrays, so replace ours (backend clears on training start)
                                 if (data.rewards !== undefined) {
                                     // Always sync with backend - it's the source of truth
-                                    // If backend has fewer rewards, it means it reset
-                                    // If backend has more, it means new rewards were added
                                     rewardHistory.value = data.rewards;
                                     
-                                    // Sanity check: If all recent rewards are exactly -4 but current reward is different,
-                                    // it might indicate stale data. But trust the backend for now.
+                                    // Update currentReward to match the last reward from backend
+                                    // This ensures dashboard and curve show the same value
+                                    if (data.rewards.length > 0) {
+                                        currentReward.value = data.rewards[data.rewards.length - 1];
+                                    }
                                 }
                                 if (data.stress_history !== undefined) {
                                     stressHistory.value = data.stress_history;
@@ -1077,21 +1089,6 @@
 
                 function updateCharts() {
                     const totalStepsNow = rewardHistory.value.length;
-                    
-                    // Sanity check: If all recent rewards are exactly -4 but current reward is different,
-                    // clear the history to avoid showing stale data
-                    if (totalStepsNow > 0) {
-                        const recentRewards = rewardHistory.value.slice(-10);
-                        const allAreMinusFour = recentRewards.length > 0 && recentRewards.every(r => Math.abs(r + 4.0) < 0.01);
-                        const currentRewardVal = currentReward.value;
-                        if (allAreMinusFour && Math.abs(currentRewardVal + 4.0) > 0.1 && currentRewardVal > -3.9) {
-                            // Stale -4 values detected, but current reward is different - clear history
-                            console.warn('Detected stale -4 rewards in history, clearing...');
-                            rewardHistory.value = [];
-                            stressHistory.value = [];
-                            return; // Exit early, will be called again with empty data
-                        }
-                    }
 
                     // Reward chart - x-axis grows with data
                     const rewardTrace = {
