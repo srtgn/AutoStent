@@ -1,1 +1,202 @@
-../../tests/files/tutorial_solid_vtu.4C.yaml
+TITLE: A simple tutorial using a vtu geometry file
+PROBLEM TYPE:
+  PROBLEMTYPE: Structure
+IO:
+  OUTPUT_SPRING: true
+  STRUCT_STRESS: "Cauchy"
+  STRUCT_STRAIN: "GL"
+  VERBOSITY: "Standard"
+  WRITE_INITIAL_STATE: false
+IO/RUNTIME VTK OUTPUT:
+  INTERVAL_STEPS: 1
+  OUTPUT_DATA_FORMAT: binary
+IO/RUNTIME VTK OUTPUT/STRUCTURE:
+  OUTPUT_STRUCTURE: true
+  DISPLACEMENT: true
+  STRESS_STRAIN: true
+  GAUSS_POINT_DATA_OUTPUT_TYPE: nodes
+
+SOLVER 1:
+  SOLVER: "Superlu"
+  NAME: "Structure_Solver"
+STRUCTURAL DYNAMIC:
+  INT_STRATEGY: "Standard"
+  DYNAMICTYPE: "Statics"
+  TIMESTEP: 10
+  NUMSTEP: 5
+  MAXTIME: 50
+  TOLDISP: 1e-09
+  TOLRES: 1e-09
+  LOADLIN: true
+  LINEAR_SOLVER: 1
+STRUCT NOX/Printing:
+  Inner Iteration: false
+  Outer Iteration StatusTest: false
+
+MATERIALS:
+  - MAT: 1
+    MAT_Mixture:
+      MATIDMIXTURERULE: 10
+      MATIDSCONST: [11, 12]
+  - MAT: 10
+    MIX_GrowthRemodelMixtureRule:
+      GROWTH_STRATEGY: 100
+      DENS: 1
+      MASSFRAC: [0.5020811158, 0.497918842]
+  - MAT: 100
+    MIX_GrowthStrategy_Stiffness:
+      KAPPA: 720
+  - MAT: 11
+    MIX_Constituent_ExplicitRemodelFiber:
+      ORIENTATION:
+        from_mesh: collagen_fiber
+      FIBER_MATERIAL_ID: 110
+      DECAY_TIME: 100
+      GROWTH_CONSTANT: 0.1
+      DEPOSITION_STRETCH: 1.1
+      INELASTIC_GROWTH: false
+  - MAT: 110
+    MIX_Constituent_RemodelFiber_Material_Exponential:
+      K1: 568
+      K2: 11.2
+      COMPRESSION: false
+  - MAT: 12
+    MIX_Constituent_ElastHyper:
+      NUMMAT: 2
+      MATIDS: [121, 122]
+      PRESTRESS_STRATEGY: 129
+  - MAT: 121
+    ELAST_IsoNeoHooke:
+      MUE:
+        constant: 72
+  - MAT: 122
+    ELAST_VolSussmanBathe:
+      KAPPA: 720
+  - MAT: 129
+    MIX_Prestress_Strategy_Constant:
+      PRESTRETCH: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+
+DESIGN VOL DIRICH CONDITIONS:
+  - E: 1
+    ENTITY_TYPE: element_block_id
+    NUMDOF: 3
+    ONOFF: [1, 0, 0]
+    VAL: [-40, 0, 0]
+    FUNCT: [0, 0, 0]
+DESIGN SURF NEUMANN CONDITIONS:
+  - E: 1
+    ENTITY_TYPE: node_set_id
+    NUMDOF: 3
+    ONOFF: [1, 0, 0]
+    VAL: [-40, 0, 0]
+    FUNCT: [0, 0, 0]
+    TYPE: "orthopressure"
+DESIGN SURF ROBIN SPRING DASHPOT CONDITIONS:
+  - E: 2
+    ENTITY_TYPE: node_set_id
+    NUMDOF: 1
+    ONOFF: [1]
+    STIFF: [100]
+    TIMEFUNCTSTIFF: [0]
+    VISCO: [0]
+    TIMEFUNCTVISCO: [0]
+    DISPLOFFSET: [0]
+    TIMEFUNCTDISPLOFFSET: [0]
+    FUNCTNONLINSTIFF: [0]
+    DIRECTION: "refsurfnormal"
+DESIGN SURF DIRICH CONDITIONS:
+  - E: 3
+    ENTITY_TYPE: node_set_id
+    NUMDOF: 3
+    ONOFF: [0, 0, 1]
+    VAL: [0.0, 0.0, 0.0]
+    FUNCT: [0, 0, 0]
+  - E: 4
+    ENTITY_TYPE: node_set_id
+    NUMDOF: 3
+    ONOFF: [0, 0, 1]
+    VAL: [0.0, 0.0, 0.0]
+    FUNCT: [0, 0, 0]
+  - E: 5
+    ENTITY_TYPE: node_set_id
+    NUMDOF: 3
+    ONOFF: [1, 0, 0]
+    VAL: [0.0, 0.0, 0.0]
+    FUNCT: [0, 0, 0]
+  - E: 6
+    ENTITY_TYPE: node_set_id
+    NUMDOF: 3
+    ONOFF: [0, 1, 0]
+    VAL: [0.0, 0.0, 0.0]
+    FUNCT: [0, 0, 0]
+DESIGN LINE DIRICH CONDITIONS:
+  - E: 7
+    ENTITY_TYPE: node_set_id
+    NUMDOF: 3
+    ONOFF: [1, 0, 1]
+    VAL: [0.0, 0.0, 0.0]
+    FUNCT: [0, 0, 0]
+  - E: 8
+    ENTITY_TYPE: node_set_id
+    NUMDOF: 3
+    ONOFF: [1, 0, 1]
+    VAL: [0.0, 0.0, 0.0]
+    FUNCT: [0, 0, 0]
+  - E: 9
+    ENTITY_TYPE: node_set_id
+    NUMDOF: 3
+    ONOFF: [0, 1, 1]
+    VAL: [0.0, 0.0, 0.0]
+    FUNCT: [0, 0, 0]
+  - E: 10
+    ENTITY_TYPE: node_set_id
+    NUMDOF: 3
+    ONOFF: [0, 1, 1]
+    VAL: [0.0, 0.0, 0.0]
+    FUNCT: [0, 0, 0]
+
+FUNCT1:
+  - COMPONENT: 0
+    SYMBOLIC_FUNCTION_OF_SPACE_TIME: "pull"
+  - VARIABLE: 0
+    NAME: "pull"
+    TYPE: "linearinterpolation"
+    NUMPOINTS: 2
+    TIMES: [0, 20]
+    VALUES: [0, 20]
+
+STRUCTURE GEOMETRY:
+  FILE: tutorial_solid_vtu.vtu
+  ELEMENT_BLOCKS:
+    - ID: 1
+      SOLID:
+        HEX8:
+          MAT: 1
+          KINEM: nonlinear
+
+fields:
+  - name: collagen_fiber
+    discretization: structure
+    source:
+      from_mesh:
+        basis: points
+
+RESULT DESCRIPTION:
+  - STRUCTURE:
+      DIS: "structure"
+      NODE: 45
+      QUANTITY: "dispx"
+      VALUE: 8.60259031264760683e-04
+      TOLERANCE: 1e-08
+  - STRUCTURE:
+      DIS: "structure"
+      NODE: 45
+      QUANTITY: "dispy"
+      VALUE: 1.12050062992231202e-02
+      TOLERANCE: 1e-08
+  - STRUCTURE:
+      DIS: "structure"
+      NODE: 45
+      QUANTITY: "dispz"
+      VALUE: 0.0
+      TOLERANCE: 1e-08

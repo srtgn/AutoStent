@@ -36,12 +36,16 @@ def read_fourc_yaml_file(fourc_yaml_file):
         # load 4C yaml file
         fourc_yaml_content = FourCInput.from_4C_yaml(fourc_yaml_file)
         fourc_yaml_content.load_includes()
-
-        # validate 4C yaml file
-        fourc_yaml_content.validate()
     except Exception as exc:
         logger.error(exc)  # currently, we throw the exception as terminal output
         return (FourCInput({}), [], 0, 0, False)
+
+    # Try to validate, but continue even if validation fails
+    try:
+        fourc_yaml_content.validate()
+    except Exception as exc:
+        logger.warning(f"Validation failed, continuing without validation: {exc}")
+        # Don't return here - continue with the loaded (but unvalidated) content
 
     with open(fourc_yaml_file, "r") as input_file:
         fourc_yaml_lines = input_file.readlines()

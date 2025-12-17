@@ -1,11 +1,12 @@
 FROM python:3.10-slim
 
-# Install system dependencies for VTK
+# Install system dependencies for VTK offscreen rendering
 RUN apt-get update && apt-get install -y \
     libgl1 \
     libxrender1 \
     libglib2.0-0 \
-    xvfb \
+    libosmesa6 \
+    libegl1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
