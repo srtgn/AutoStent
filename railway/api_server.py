@@ -12,6 +12,29 @@ import threading
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
+# Set LD_LIBRARY_PATH for 4C libraries if not already set
+# This is critical for finding 4C shared libraries at runtime
+if not os.environ.get("LD_LIBRARY_PATH"):
+    # Common paths where 4C libraries might be
+    fourc_lib_paths = [
+        "/home/user/4C/build",
+        "/usr/local/lib",
+        "/usr/lib/x86_64-linux-gnu",
+        "/usr/lib"
+    ]
+    # Filter to only existing directories
+    existing_paths = [p for p in fourc_lib_paths if Path(p).exists()]
+    if existing_paths:
+        os.environ["LD_LIBRARY_PATH"] = ":".join(existing_paths)
+        print(f"✓ Set LD_LIBRARY_PATH={os.environ['LD_LIBRARY_PATH']}")
+else:
+    # Ensure 4C build directory is in LD_LIBRARY_PATH
+    current_ld_path = os.environ.get("LD_LIBRARY_PATH", "")
+    fourc_build = "/home/user/4C/build"
+    if Path(fourc_build).exists() and fourc_build not in current_ld_path:
+        os.environ["LD_LIBRARY_PATH"] = f"{fourc_build}:{current_ld_path}"
+        print(f"✓ Added {fourc_build} to LD_LIBRARY_PATH")
+
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -43,11 +66,14 @@ FOURC_CAN_EXECUTE = False
 FOURC_VERSION_OUTPUT = ""
 if FOURC_BINARY_EXISTS:
     try:
+        # Use updated environment with LD_LIBRARY_PATH
+        env = os.environ.copy()
         test_result = subprocess.run(
             [FOURC_BINARY_PATH, "--version"],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
+            env=env  # Pass the environment with LD_LIBRARY_PATH
         )
         FOURC_VERSION_OUTPUT = test_result.stdout.strip() or test_result.stderr.strip()
         
@@ -371,10 +397,13 @@ def check_4c_status():
     }
     
     # Add recommendation based on status
+    ld_path = os.environ.get("LD_LIBRARY_PATH", "")
     if not FOURC_BINARY_EXISTS:
         result["recommendation"] = "4C binary not found. Check Dockerfile COPY commands."
+    elif not ld_path or ld_path == "not set":
+        result["recommendation"] = "LD_LIBRARY_PATH is not set! Set it in Dockerfile ENV to include /home/user/4C/build and other library paths."
     elif not FOURC_CAN_EXECUTE:
-        result["recommendation"] = "4C binary exists but cannot execute (missing shared libraries). Use 4C Docker image as base instead of multi-stage copy."
+        result["recommendation"] = f"4C binary exists but cannot execute. LD_LIBRARY_PATH={ld_path}. Check if libraries are in those paths."
     elif not FOURC_AVAILABLE:
         result["recommendation"] = "4C binary works but FourCSimulator failed to initialize. Check autostent package."
     else:
@@ -394,6 +423,23 @@ def check_4c_status():
             result["debug_info"]["missing_lib_count"] = len(missing_libs) if missing_libs else 0
         except Exception as e:
             result["debug_info"]["ldd_error"] = str(e)
+        
+        # Live test: Try to run fourc with current environment
+        try:
+            env = os.environ.copy()
+            live_test = subprocess.run(
+                [FOURC_BINARY_PATH, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=env
+            )
+            result["debug_info"]["live_test_returncode"] = live_test.returncode
+            result["debug_info"]["live_test_output"] = (live_test.stdout or live_test.stderr)[:200]
+            result["debug_info"]["live_test_works"] = live_test.returncode == 0
+        except Exception as e:
+            result["debug_info"]["live_test_error"] = str(e)
+            result["debug_info"]["live_test_works"] = False
     
     return result
 

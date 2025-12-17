@@ -17,9 +17,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN ln -sf /home/user/4C/build/4C /usr/local/bin/fourc && \
     chmod +x /usr/local/bin/fourc
 
+# Find where 4C libraries are located
+RUN echo "=== Finding 4C libraries ===" && \
+    find /home/user/4C -name "*.so*" -type f 2>/dev/null | head -5 || echo "Searching..." && \
+    ls -la /home/user/4C/build/*.so 2>/dev/null || echo "No .so files in build/" && \
+    find /usr -name "*4C*.so*" 2>/dev/null | head -5 || echo "No 4C libs in /usr"
+
 # Verify 4C works (this will fail the build if deps are missing)
 RUN echo "=== Verifying 4C binary ===" && \
-    fourc --version || echo "4C version check complete"
+    export LD_LIBRARY_PATH="/home/user/4C/build:/usr/local/lib:/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}" && \
+    ldconfig /home/user/4C/build /usr/local/lib 2>/dev/null || true && \
+    fourc --version || echo "4C version check (may fail without full LD_LIBRARY_PATH)"
 
 # Set working directory
 WORKDIR /app
@@ -46,10 +54,12 @@ COPY railway/vtu_parser.py .
 # Expose port
 EXPOSE 8080
 
-# Environment variables
+# Environment variables - CRITICAL: Set LD_LIBRARY_PATH for 4C libraries
 ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/home/user/4C/build:${PATH}"
+# Include common library paths where 4C dependencies might be
+ENV LD_LIBRARY_PATH="/home/user/4C/build:/usr/local/lib:/usr/lib/x86_64-linux-gnu:/usr/lib:${LD_LIBRARY_PATH}"
 
 # Run as non-root user for security (use the user from 4C image)
 USER user
