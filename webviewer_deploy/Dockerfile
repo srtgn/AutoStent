@@ -19,6 +19,11 @@ COPY . .
 
 # Set python path to include src
 ENV PYTHONPATH=/app/src
+ENV PYTHONUNBUFFERED=1
+
+# Copy startup script
+COPY start.sh .
+RUN chmod +x start.sh
 
 # Run the webviewer
-CMD ["xvfb-run", "-a", "python", "-m", "fourc_webviewer.main"]
+CMD ["./start.sh"]
