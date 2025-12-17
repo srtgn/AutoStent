@@ -42,7 +42,25 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
+
+# Global exception handler to ensure CORS headers on errors
+from fastapi.responses import JSONResponse
+from starlette.requests import Request
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Ensure all exceptions return proper JSON with CORS headers."""
+    return JSONResponse(
+        status_code=500,
+        content={"error": str(exc), "detail": "Internal server error"},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
 
 # Paths
 FOURC_BIN = os.environ.get("FOURC_BIN", "/usr/local/bin/fourc")
