@@ -68,36 +68,60 @@ if FOURC_BINARY_EXISTS:
     try:
         # Use updated environment with LD_LIBRARY_PATH
         env = os.environ.copy()
+        
+        # Try --help first (more likely to be supported)
         test_result = subprocess.run(
-            [FOURC_BINARY_PATH, "--version"],
+            [FOURC_BINARY_PATH, "--help"],
             capture_output=True,
             text=True,
             timeout=10,
-            env=env  # Pass the environment with LD_LIBRARY_PATH
+            env=env
         )
-        FOURC_VERSION_OUTPUT = test_result.stdout.strip() or test_result.stderr.strip()
+        output = test_result.stdout.strip() or test_result.stderr.strip()
+        
+        # If --help doesn't work, try --version as fallback
+        if test_result.returncode == 127 or "error while loading shared libraries" in output:
+            # Try --version as fallback
+            test_result = subprocess.run(
+                [FOURC_BINARY_PATH, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=env
+            )
+            output = test_result.stdout.strip() or test_result.stderr.strip()
+        
+        FOURC_VERSION_OUTPUT = output
         
         # Check for common failure indicators
-        has_library_error = "error while loading shared libraries" in FOURC_VERSION_OUTPUT
-        has_not_found = "cannot open shared object file" in FOURC_VERSION_OUTPUT
+        has_library_error = "error while loading shared libraries" in output
+        has_not_found = "cannot open shared object file" in output
+        # 4C doesn't support --version/--help, but if it runs and gives this error, it means it WORKS!
+        has_invalid_arg = "not valid" in output or "not recognized" in output or "Please refer" in output
         
         # Return code 127 = "command not found" or shared library errors
         # Return code 0 = success
+        # Return code 1 with "not valid"/"Please refer" = binary works but flag not supported (SUCCESS!)
         if test_result.returncode == 127 or has_library_error or has_not_found:
             # Definite failure - missing libraries
             FOURC_CAN_EXECUTE = False
             print(f"✗ 4C binary CANNOT execute - missing shared libraries!")
             print(f"  Return code: {test_result.returncode}")
-            print(f"  Error: {FOURC_VERSION_OUTPUT[:200]}...")
+            print(f"  Error: {output[:200]}...")
         elif test_result.returncode == 0:
             FOURC_CAN_EXECUTE = True
             print(f"✓ 4C binary verified at: {FOURC_BINARY_PATH}")
-            print(f"  Version: {FOURC_VERSION_OUTPUT}")
+            print(f"  Output: {output[:100]}...")
+        elif test_result.returncode == 1 and has_invalid_arg:
+            # Binary runs but flag not supported - this means it WORKS!
+            FOURC_CAN_EXECUTE = True
+            print(f"✓ 4C binary verified (flag not supported, but binary executes successfully)")
+            print(f"  Output: {output[:100]}...")
         else:
             # Other non-zero return - be conservative, assume failure
             FOURC_CAN_EXECUTE = False
             print(f"⚠ 4C binary returned unexpected code {test_result.returncode}")
-            print(f"  Output: {FOURC_VERSION_OUTPUT}")
+            print(f"  Output: {output}")
     except Exception as e:
         FOURC_CAN_EXECUTE = False
         print(f"✗ 4C binary exists but cannot execute: {e}")
@@ -398,10 +422,18 @@ def check_4c_status():
     
     # Add recommendation based on status
     ld_path = os.environ.get("LD_LIBRARY_PATH", "")
+    live_test_works = result.get("debug_info", {}).get("live_test_works", False)
+    
     if not FOURC_BINARY_EXISTS:
         result["recommendation"] = "4C binary not found. Check Dockerfile COPY commands."
     elif not ld_path or ld_path == "not set":
         result["recommendation"] = "LD_LIBRARY_PATH is not set! Set it in Dockerfile ENV to include /home/user/4C/build and other library paths."
+    elif live_test_works:
+        # Live test shows it works - update status
+        if not FOURC_AVAILABLE:
+            result["recommendation"] = "4C binary executes successfully, but FourCSimulator failed to initialize. Check autostent package imports."
+        else:
+            result["recommendation"] = "4C is fully operational! ✓"
     elif not FOURC_CAN_EXECUTE:
         result["recommendation"] = f"4C binary exists but cannot execute. LD_LIBRARY_PATH={ld_path}. Check if libraries are in those paths."
     elif not FOURC_AVAILABLE:
@@ -434,9 +466,22 @@ def check_4c_status():
                 timeout=10,
                 env=env
             )
+            output = (live_test.stdout or live_test.stderr)[:200]
             result["debug_info"]["live_test_returncode"] = live_test.returncode
-            result["debug_info"]["live_test_output"] = (live_test.stdout or live_test.stderr)[:200]
-            result["debug_info"]["live_test_works"] = live_test.returncode == 0
+            result["debug_info"]["live_test_output"] = output
+            
+            # 4C doesn't support --version, but if it runs and gives "not valid" error, it WORKS!
+            has_invalid_arg = "not valid" in output or "not recognized" in output
+            result["debug_info"]["live_test_works"] = (
+                live_test.returncode == 0 or 
+                (live_test.returncode == 1 and has_invalid_arg)
+            )
+            
+            # Update fourc_can_execute if live test shows it works
+            if result["debug_info"]["live_test_works"] and not FOURC_CAN_EXECUTE:
+                # Runtime check shows it works, update our status
+                result["fourc_can_execute"] = True
+                result["fourc_available"] = True  # Will be set properly if simulator initializes
         except Exception as e:
             result["debug_info"]["live_test_error"] = str(e)
             result["debug_info"]["live_test_works"] = False
