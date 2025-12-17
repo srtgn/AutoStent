@@ -29,7 +29,8 @@ RUN pip install --no-cache-dir \
     pydantic \
     numpy \
     stable-baselines3 \
-    gymnasium
+    gymnasium \
+    pyvista
 
 # Copy autostent package (for 4C interface)
 COPY autostent/ ./autostent/
@@ -37,6 +38,8 @@ RUN pip install -e ./autostent
 
 # Copy application code
 COPY railway/api_server.py .
+COPY railway/mesh_generator.py .
+COPY railway/vtu_parser.py .
 
 # Expose port
 EXPOSE 8080
