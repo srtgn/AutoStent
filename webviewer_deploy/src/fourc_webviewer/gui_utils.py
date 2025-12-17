@@ -165,6 +165,13 @@ def _toolbar(server_controller):
         v_if=("vtu_path != ''",),
         click=server_controller.click_export_button,
     )
+    vuetify.VBtn(
+        text="PARSE GEOMETRY",
+        outlined=True,
+        color="green",
+        v_if=("vtu_path != ''",),
+        click=server_controller.click_parse_geometry_button,
+    )
     with vuetify.VBtn(icon=True, click=server_controller.view_reset_camera):
         vuetify.VIcon("mdi-crop-free")
 

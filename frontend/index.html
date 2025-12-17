@@ -147,7 +147,7 @@
                 <div class="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg border border-gray-200">
                     <label class="flex items-center gap-2 cursor-pointer select-none">
                         <input type="checkbox" v-model="useDocker" :disabled="training" class="w-4 h-4 accent-blue-600">
-                        <span class="text-sm font-medium text-gray-700">Use Real 4C Solver (Cloud)</span>
+                        <span class="text-sm font-medium text-gray-700">4C Solver (Cloud)</span>
                     </label>
                 </div>
 
@@ -156,7 +156,7 @@
                     <label class="flex items-center gap-2 cursor-pointer select-none">
                         <input type="checkbox" v-model="useRealRL" :disabled="training"
                             class="w-4 h-4 accent-green-600">
-                        <span class="text-sm font-medium text-gray-700">Use Real RL (PPO)</span>
+                        <span class="text-sm font-medium text-gray-700">RL (PPO)</span>
                     </label>
                     <span v-if="useRealRL && !backendConnected" class="text-xs text-red-500 font-medium">Offline</span>
                     <span v-if="useRealRL && backendConnected" class="text-xs text-green-600 font-medium">Online</span>
@@ -393,20 +393,19 @@
 
             <div v-if="show4CViewer" class="border border-gray-200 rounded-lg overflow-hidden">
                 <div class="bg-gray-50 px-4 py-2 border-b border-gray-200 flex items-center justify-between">
-                    <span class="text-xs text-gray-600">4C-Webviewer @ localhost:5000</span>
-                    <a href="http://localhost:5000" target="_blank" class="text-xs text-blue-600 hover:underline">
+                    <span class="text-xs text-gray-600">4C-Webviewer @ 4cwebviewer.up.railway.app</span>
+                    <a :href="webviewerUrl" target="_blank" class="text-xs text-blue-600 hover:underline">
                         Open in new tab ↗
                     </a>
                 </div>
-                <iframe src="http://localhost:5000" class="w-full bg-white" style="height: 600px; border: none;"
+                <iframe :src="webviewerUrl" class="w-full bg-white" style="height: 600px; border: none;"
                     title="4C Webviewer"></iframe>
             </div>
 
             <div v-else class="bg-gray-50 rounded-lg p-6 text-center">
                 <p class="text-gray-500 text-sm mb-2">Click "Show Viewer" to embed the 4C-webviewer</p>
                 <p class="text-xs text-gray-400">
-                    Make sure the 4C-webviewer is running: <code
-                        class="bg-gray-200 px-1 rounded">python -m fourc_webviewer</code>
+                    Make sure the 4C-webviewer is running and the URL is correct.
                 </p>
             </div>
         </div>
@@ -447,7 +446,7 @@
                 const useDocker = ref(false);
                 const dockerAvailable = ref(true);
                 const railwayUrl = 'https://4c.up.railway.app';  // Railway 4C API
-                const webviewerUrl = 'http://localhost:5000';
+                const webviewerUrl = 'https://4cwebviewer.up.railway.app';
                 const show4CViewer = ref(false);
 
                 // Run simulation on Railway when Docker mode is enabled
@@ -1077,7 +1076,12 @@
                     comparing, comparisonDone, comparisonEpisodes,
                     randomMean, trainedMean, improvement,
                     comparisonProgress, comparisonPhase,
-                    runComparison
+                    improvement,
+                    comparisonProgress, comparisonPhase,
+                    runComparison,
+                    // Webviewer
+                    webviewerUrl,
+                    show4CViewer
                 };
             }
         }).mount('#app');

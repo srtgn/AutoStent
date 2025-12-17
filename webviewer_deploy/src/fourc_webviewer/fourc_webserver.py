@@ -142,6 +142,35 @@ class FourCWebServer:
         # self.state contains all the state variables to be shared between server and client
         return self.server.state
 
+    @controller.set("click_parse_geometry_button")
+    def click_parse_geometry_button(self):
+        """Parse the current geometry and download as JSON for training."""
+        import json
+        
+        # Get the problem mesh (PyVista PolyData or UnstructuredGrid)
+        mesh = self._actors.get("problem_mesh")
+        if not mesh:
+            self.state.export_status = "error" # Re-using export status or creating new one
+            return
+
+        # Extract points/vertices
+        points = mesh.points.tolist()
+        
+        # Extract connectivity (simplification: just points for now as requested for "geometry")
+        # If user needs "stent geometries", points might be enough or they might need cells
+        # Let's provide basic mesh info
+        
+        geometry_data = {
+            "points": points,
+            "n_points": len(points),
+            "bounds": mesh.bounds,
+            "center": mesh.center,
+        }
+        
+        # Create a temporary file to serve
+        content = json.dumps(geometry_data, indent=2)
+        return self.server.protocol.addAttachment(content.encode("utf-8"))
+
     @property
     def ctrl(self):
         """Get controller."""
