@@ -702,7 +702,10 @@
                             const res = await fetch(`${backendUrl}/start`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ steps: trainSteps.value })
+                                body: JSON.stringify({
+                                    steps: trainSteps.value,
+                                    use_docker: useDocker.value // Pass user choice to backend
+                                })
                             });
                             const data = await res.json();
                             if (data.status === 'started') {
