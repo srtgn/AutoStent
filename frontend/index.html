@@ -377,8 +377,8 @@
             </div>
         </div>
 
-        <!-- 4C-Webviewer Integrated Panel -->
-        <div v-if="useDocker" class="card p-4 mt-6">
+        <!-- 4C-Webviewer Integrated Panel (always visible) -->
+        <div class="card p-4 mt-6">
             <div class="flex items-center justify-between mb-3">
                 <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide">
                     4C Webviewer Integration
@@ -447,7 +447,7 @@
                 const dockerAvailable = ref(true);
                 const railwayUrl = 'https://4c.up.railway.app';  // Railway 4C API
                 const webviewerUrl = 'https://4cwebviewer.up.railway.app';
-                const show4CViewer = ref(false);
+                const show4CViewer = ref(true);
 
                 // Run simulation on Railway when Docker mode is enabled
                 async function runRailwaySimulation(params) {
