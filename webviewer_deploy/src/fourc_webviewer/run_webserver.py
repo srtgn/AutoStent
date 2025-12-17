@@ -20,7 +20,7 @@ def run_webviewer(fourc_yaml_file=None):
     fourc_webserver = FourCWebServer(fourc_yaml_file)
 
     # start the server after everything is set up
-    fourc_webserver.server.start(port=SERVER_PORT)
+    fourc_webserver.server.start(port=SERVER_PORT, host="0.0.0.0", timeout=0)
 
     # run cleanup
     fourc_webserver.cleanup()
