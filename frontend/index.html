@@ -388,7 +388,7 @@
     </div>
 
     <script>
-        const { createApp, ref, computed, watch, onMounted } = Vue;
+        const { createApp, ref, computed, watch, onMounted, nextTick } = Vue;
 
         createApp({
             setup() {
@@ -445,8 +445,11 @@
                     } else if (useRealRL.value || useDocker.value) {
                         // Training mode but no data yet - show 0
                         return 0;
+                    } else if (!hasInteracted.value) {
+                        // Initial state or after reset - show 0
+                        return 0;
                     } else {
-                        // Mockup mode (no checkboxes) - show calculated displacement
+                        // Mockup mode after user interaction - show calculated displacement
                         return metrics.value.displacement || 0;
                     }
                 });
@@ -466,6 +469,9 @@
                 // 4C Docker mode state (uses Railway cloud API)
                 const useDocker = ref(false);
                 const dockerAvailable = ref(true);
+                
+                // Track if user has interacted with params (for showing 0 displacement on start/reset)
+                const hasInteracted = ref(false);
                 const show4CViewer = ref(true);
                 const fourcStatus = ref('checking'); // 'checking', 'available', 'unavailable'
                 
@@ -870,8 +876,14 @@
                     }
                     
                     // Reset local state
+                    // Set params first, then reset interaction flag AFTER to avoid watch setting it true
                     params.value = { diameter: 10.0, length: 20.0, strutThickness: 0.12, numStruts: 12, crownHeight: 1.0 };
                     metrics.value = { stress: 0, displacement: 0 };  // Reset to 0
+                    // Use nextTick to ensure hasInteracted is reset after the watch runs
+                    nextTick(() => {
+                        hasInteracted.value = false;
+                        metrics.value = { stress: 0, displacement: 0 };
+                    });
                     currentReward.value = 0;  // Reset to 0
                     episodeRewards.value = [];
                     stressHistory.value = [];
@@ -1233,6 +1245,9 @@
                 }
 
                 watch(params, () => {
+                    // Mark that user has interacted with params
+                    hasInteracted.value = true;
+                    
                     // When not training AND not using RL/4C (mockup mode), update metrics
                     if (!training.value && !useRealRL.value && !useDocker.value) {
                         computeMetrics(); // Calculate displacement for mockup mode

@@ -1096,10 +1096,19 @@ def test_4c_docker_direct():
             test_yaml.write_text("""TITLE: Minimal test
 PROBLEM TYPE:
   PROBLEMTYPE: Structure
+
+SOLVER 1:
+  SOLVER: "Superlu"
+  NAME: "Structure_Solver"
+
 STRUCTURAL DYNAMIC:
   DYNAMICTYPE: Statics
   TIMESTEP: 1.0
   NUMSTEP: 1
+  LINEAR_SOLVER: 1
+  TOLDISP: 1e-06
+  TOLRES: 1e-06
+
 MATERIALS:
   - MAT: 1
     MAT_Struct_PlasticNlnLogNeoHooke:
