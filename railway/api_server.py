@@ -248,17 +248,72 @@ def health():
     return {"status": "healthy"}
 
 # ===== HELPER FUNCTIONS =====
+# Import mesh generation and VTU parsing
+try:
+    from mesh_generator import (
+        StentGeometry,
+        generate_cylindrical_stent_mesh,
+        write_4c_geometry
+    )
+    from vtu_parser import parse_vtu_file, find_latest_vtu
+    MESH_TOOLS_AVAILABLE = True
+except ImportError as e:
+    print(f"WARNING: Mesh tools not available: {e}")
+    MESH_TOOLS_AVAILABLE = False
+
+
 def generate_4c_yaml(params: StentParams, output_path: Path):
-    """Generate simplified 4C YAML input file for stent simulation."""
-    yaml_content = f"""# Automated stent simulation
+    """Generate complete 4C YAML input file with real mesh."""
+    
+    if not MESH_TOOLS_AVAILABLE:
+        # Fallback to simple YAML without mesh
+        yaml_content = f"""# Simplified 4C input (mesh tools not available)
 PROBLEM_SIZE: 3
 PROBLEM_TYPE: Structure
 
 STRUCTURAL:
   NEWMARK:
     TIMESTEP: 0.001
-    NUMSTEP: 100
-    LOADSTEP_SIZE: 0.01
+    NUMSTEP: 50
+    
+MATERIALS:
+  MAT 1:
+    TYPE: ElastHyper
+    YOUNG: 200000.0
+    NUE: 0.3
+    DENS: 6.45e-9
+
+# Mesh would be here
+"""
+        output_path.write_text(yaml_content)
+        return
+    
+    # Generate real mesh
+    geometry = StentGeometry(
+        diameter=params.diameter,
+        length=params.length,
+        strut_thickness=params.strut_thickness,
+        num_struts=params.num_struts,
+        crown_height=params.crown_height
+    )
+    
+    nodes, elements, fixed_nodes, loaded_nodes = generate_cylindrical_stent_mesh(
+        geometry,
+        n_circumferential_per_strut=4,
+        n_radial=2
+    )
+    
+    # Write complete 4C YAML
+    with open(output_path, 'w') as f:
+        f.write("""# 4C Stent Simulation with Real Mesh
+PROBLEM_SIZE: 3
+PROBLEM_TYPE: Structure
+
+STRUCTURAL:
+  NEWMARK:
+    TIMESTEP: 0.001
+    NUMSTEP: 50
+    LOADSTEP_SIZE: 0.02
 
 MATERIALS:
   MAT 1:
@@ -267,13 +322,35 @@ MATERIALS:
     NUE: 0.3
     DENS: 6.45e-9  # kg/mm^3
 
-GEOMETRY:
-  # Simplified - would need actual mesh generation
-  ELEMENT_BLOCKS:
-    - ID: 1
-      MATERIAL: 1
-      SHAPE: hex8
-
+""")
+        
+        # Write geometry
+        f.write("GEOMETRY:\n")
+        f.write("  NODES:\n")
+        for i, node in enumerate(nodes):
+            f.write(f"    - ID: {i+1}, COORDS: [{node[0]:.6f}, {node[1]:.6f}, {node[2]:.6f}]\n")
+        
+        f.write("\n  ELEMENTS:\n")
+        for i, elem in enumerate(elements):
+            node_ids = ", ".join(str(n+1) for n in elem)
+            f.write(f"    - ID: {i+1}, TYPE: hex8, NODES: [{node_ids}]\n")
+        
+        f.write("\n  ELEMENT_BLOCKS:\n")
+        f.write("    - ID: 1\n")
+        f.write(f"      ELEMENTS: [1-{len(elements)}]\n")
+        f.write("      MATERIAL: 1\n")
+        
+        f.write("\n  NODE_SETS:\n")
+        f.write("    - ID: 1, NAME: fixed_end\n")
+        fixed_ids = ", ".join(str(n+1) for n in fixed_nodes)
+        f.write(f"      NODES: [{fixed_ids}]\n")
+        f.write("    - ID: 2, NAME: loaded_surface\n")
+        loaded_ids = ", ".join(str(n+1) for n in loaded_nodes)
+        f.write(f"      NODES: [{loaded_ids}]\n")
+        
+        # Boundary conditions
+        pressure = params.diameter * 0.1  # Radial pressure
+        f.write(f"""
 BOUNDARY_CONDITIONS:
   DIRICHLET:
     - NODE_SETS: [1]
@@ -282,15 +359,14 @@ BOUNDARY_CONDITIONS:
   
   NEUMANN:
     - NODE_SETS: [2]
-      DOF: [2]  # Radial pressure
-      VALUE: {params.diameter * 0.1}  # Pressure based on diameter
+      DOF: [2]
+      VALUE: {pressure}
 
 OUTPUT:
   VTK:
     INTERVAL: 10
     FIELDS: ['stress', 'displacement', 'strain']
-"""
-    output_path.write_text(yaml_content)
+""")
 
 
 def run_real_4c_simulation(params: StentParams):
@@ -328,8 +404,28 @@ def run_real_4c_simulation(params: StentParams):
             return {
                 "success": False,
                 "error": result.error_message or "4C simulation failed",
-                "log_path": str(result.log_path) if result.log_path else None
+                "log_path": str(result.log_path) if result.log_path else None,
+                "fallback_used": True
             }
+        
+        # Parse VTU files for actual results
+        max_stress = 0.0
+        max_disp = 0.0
+        max_strain = 0.0
+        
+        if MESH_TOOLS_AVAILABLE:
+            latest_vtu = find_latest_vtu(output_dir)
+            if latest_vtu:
+                try:
+                    max_stress, max_disp, max_strain, parse_success = parse_vtu_file(latest_vtu)
+                    if parse_success:
+                        print(f"Parsed VTU results: stress={max_stress:.2f}, disp={max_disp:.4f}")
+                    else:
+                        print("VTU parsing failed - using placeholder values")
+                except Exception as e:
+                    print(f"Error parsing VTU: {e}")
+            else:
+                print("No VTU files found - 4C may not have output results")
         
         # Return results
         return {
@@ -337,16 +433,20 @@ def run_real_4c_simulation(params: StentParams):
             "simulation_id": f"4c_{int(time.time()*1000)}",
             "status": "completed",
             "result": {
-                "max_stress": float(result.max_von_mises_stress),
-                "max_displacement": float(result.max_displacement),
+                "max_stress": float(max_stress) if max_stress > 0 else float(result.max_von_mises_stress),
+                "max_displacement": float(max_disp) if max_disp > 0 else float(result.max_displacement),
+                "max_strain": float(max_strain),
                 "converged": result.converged,
-                "source": "real_4c_fem",
-                "num_iterations": result.num_iterations
+                "source": "real_4c_fem" if max_stress > 0 else "real_4c_no_results",
+                "num_iterations": result.num_iterations,
+                "mesh_elements": len(elements) if MESH_TOOLS_AVAILABLE else 0
             },
             "metadata": result.metadata
         }
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return {
             "success": False,
             "error": f"4C execution error: {str(e)}",
