@@ -233,12 +233,12 @@
                     <h2 class="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Performance</h2>
                     <div class="param-row">
                         <span class="text-gray-600">Stress</span>
-                        <span class="font-medium" :class="metrics.stress < 150 ? 'text-green-600' : 'text-red-600'">{{
-                            metrics.stress.toFixed(1) }} MPa</span>
+                        <span class="font-medium" :class="displayedStress < 150 ? 'text-green-600' : 'text-red-600'">{{
+                            displayedStress.toFixed(1) }} MPa</span>
                     </div>
                     <div class="param-row">
                         <span class="text-gray-600">Displacement</span>
-                        <span class="font-medium">{{ metrics.displacement.toFixed(3) }} mm</span>
+                        <span class="font-medium">{{ displayedDisplacement.toFixed(3) }} mm</span>
                     </div>
                     <div class="param-row">
                         <span class="text-gray-600">Reward</span>
@@ -411,14 +411,42 @@
                 const stressHistory = ref([]);
                 const rewardHistory = ref([]);
                 
-                // Computed: Use last reward from backend history if available, else use local calculation
+                // Computed: Use last reward from backend history if available, else 0
                 const displayedReward = computed(() => {
                     if (training.value && rewardHistory.value.length > 0) {
                         // During training, use the last reward from backend
-                        return rewardHistory.value[rewardHistory.value.length - 1];
+                        const lastReward = rewardHistory.value[rewardHistory.value.length - 1];
+                        return typeof lastReward === 'number' ? lastReward : 0;
+                    } else if (rewardHistory.value.length > 0) {
+                        // After training, show last reward
+                        const lastReward = rewardHistory.value[rewardHistory.value.length - 1];
+                        return typeof lastReward === 'number' ? lastReward : 0;
                     } else {
-                        // When not training, use local calculation
-                        return currentReward.value;
+                        // No training done - show 0
+                        return 0;
+                    }
+                });
+                
+                // Computed: Display stress from training results, or 0 if no training
+                const displayedStress = computed(() => {
+                    if (training.value && stressHistory.value.length > 0) {
+                        return stressHistory.value[stressHistory.value.length - 1];
+                    } else if (stressHistory.value.length > 0) {
+                        return stressHistory.value[stressHistory.value.length - 1];
+                    } else {
+                        return 0;
+                    }
+                });
+                
+                // Computed: Display displacement from training results, or 0 if no training
+                const displayedDisplacement = computed(() => {
+                    // Displacement isn't tracked separately, derive from stress if needed
+                    // For now, return 0 when no training
+                    if (training.value && stressHistory.value.length > 0) {
+                        // Could calculate from stress, but for simplicity return 0
+                        return 0;
+                    } else {
+                        return 0;
                     }
                 });
                 const episodes = ref(0);
@@ -529,14 +557,14 @@
                                 steps.value = data.current_step;
                                 episodes.value = data.episodes;
 
-                                // Update params
+                                // Update params (but don't compute metrics - use backend values)
                                 if (data.current_params && data.current_params.diameter) {
                                     params.value.diameter = data.current_params.diameter;
                                     params.value.strutThickness = data.current_params.strut_thickness || 0.12;
                                     params.value.numStruts = data.current_params.num_struts || 12;
                                     params.value.crownHeight = data.current_params.crown_height || 1.0;
                                     params.value.length = data.current_params.length || 20;
-                                    computeMetrics();
+                                    // Don't call computeMetrics() - we use backend values
                                 }
 
                                 // Update histories from backend
@@ -803,7 +831,8 @@
                     
                     // Reset local state
                     params.value = { diameter: 10.0, length: 20.0, strutThickness: 0.12, numStruts: 12, crownHeight: 1.0 };
-                    metrics.value = { stress: 150, displacement: 0.5 };
+                    metrics.value = { stress: 0, displacement: 0 };  // Reset to 0
+                    currentReward.value = 0;  // Reset to 0
                     episodeRewards.value = [];
                     stressHistory.value = [];
                     rewardHistory.value = [];
@@ -813,9 +842,9 @@
                     training.value = false;
                     comparisonDone.value = false;
                     trainedPolicy.value = null;
-                    computeMetrics();
+                    // Don't compute metrics - show 0 until training starts
                     updateStent3D();
-                    // Force chart update to clear old -4 values
+                    // Force chart update to clear old values
                     updateCharts();
                 }
 
@@ -1142,14 +1171,15 @@
                 }
 
                 watch(params, () => {
+                    // Only update 3D view when params change, don't compute metrics
+                    // Metrics should only come from training results
                     if (!training.value) {
-                        computeMetrics();
                         updateStent3D();
                     }
                 }, { deep: true });
 
                 onMounted(() => {
-                    computeMetrics();
+                    // Don't compute metrics on mount - show 0 until training starts
                     updateStent3D();
                     updateCharts();
                     // Check backend connection periodically
@@ -1171,7 +1201,9 @@
                     comparing, comparisonDone, comparisonEpisodes,
                     randomMean, trainedMean, improvement,
                     comparisonProgress, comparisonPhase,
-                    runComparison
+                    runComparison,
+                    // Displayed values (computed - show 0 when no training)
+                    displayedReward, displayedStress, displayedDisplacement
                 };
             }
         }).mount('#app');
