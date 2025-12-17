@@ -477,18 +477,27 @@ def run_mockup_simulation(params: StentParams):
 @app.post("/simulate/sync")
 def run_simulation_sync(request: SimulationRequest):
     """Run a single synchronous simulation (mockup or real 4C)."""
-    use_real_4c = request.use_docker and FOURC_AVAILABLE
+    use_real_4c = request.use_docker
     
     if use_real_4c:
-        print("Using real 4C FEM solver")
+        # User wants REAL 4C - no fallback!
+        if not FOURC_AVAILABLE:
+            return {
+                "success": False,
+                "error": "4C solver not available on this server. Please uncheck 'Use Docker (Real 4C)' to use fast mockup mode, or contact admin to install 4C binary.",
+                "help": "See: https://github.com/4C-multiphysics/4C"
+            }
+        
+        print("Using real 4C FEM solver (no fallback)")
         result = run_real_4c_simulation(request.params)
-        # If real 4C fails, fallback to mockup
-        if not result.get("success") and result.get("fallback_used"):
-            print("4C failed, falling back to mockup")
-            result = run_mockup_simulation(request.params)
-            result["warning"] = "Real 4C unavailable, used analytical mockup"
+        
+        # If 4C fails, return error (NO FALLBACK TO MOCKUP)
+        if not result.get("success"):
+            result["error"] = f"Real 4C simulation failed: {result.get('error', 'Unknown error')}. Please uncheck the checkbox to use mockup mode."
+        
         return result
     else:
+        # Mockup mode
         return run_mockup_simulation(request.params)
 
 
