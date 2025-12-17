@@ -528,14 +528,21 @@
                                     computeMetrics();
                                 }
 
-                                // Update histories
-                                if (data.rewards.length > 0) {
+                                // Update histories from backend
+                                // Backend sends full arrays, so replace ours (backend clears on training start)
+                                if (data.rewards !== undefined) {
+                                    // Always sync with backend - it's the source of truth
+                                    // If backend has fewer rewards, it means it reset
+                                    // If backend has more, it means new rewards were added
                                     rewardHistory.value = data.rewards;
+                                    
+                                    // Sanity check: If all recent rewards are exactly -4 but current reward is different,
+                                    // it might indicate stale data. But trust the backend for now.
                                 }
-                                if (data.stress_history.length > 0) {
+                                if (data.stress_history !== undefined) {
                                     stressHistory.value = data.stress_history;
                                 }
-                                if (data.episode_rewards.length > 0) {
+                                if (data.episode_rewards !== undefined) {
                                     episodeRewards.value = data.episode_rewards;
                                 }
 
@@ -650,6 +657,7 @@
                             
                             if (data.status === 'started') {
                                 console.log('Training started in mode:', data.mode);
+                                // Clear ALL history before starting
                                 training.value = true;
                                 progress.value = 0;
                                 steps.value = 0;
@@ -657,6 +665,8 @@
                                 rewardHistory.value = [];
                                 stressHistory.value = [];
                                 episodeRewards.value = [];
+                                // Force chart update to clear old data
+                                updateCharts();
                                 startPolling();
                             }
                         } catch (e) {
@@ -793,6 +803,7 @@
                     trainedPolicy.value = null;
                     computeMetrics();
                     updateStent3D();
+                    // Force chart update to clear old -4 values
                     updateCharts();
                 }
 
@@ -1066,6 +1077,21 @@
 
                 function updateCharts() {
                     const totalStepsNow = rewardHistory.value.length;
+                    
+                    // Sanity check: If all recent rewards are exactly -4 but current reward is different,
+                    // clear the history to avoid showing stale data
+                    if (totalStepsNow > 0) {
+                        const recentRewards = rewardHistory.value.slice(-10);
+                        const allAreMinusFour = recentRewards.length > 0 && recentRewards.every(r => Math.abs(r + 4.0) < 0.01);
+                        const currentRewardVal = currentReward.value;
+                        if (allAreMinusFour && Math.abs(currentRewardVal + 4.0) > 0.1 && currentRewardVal > -3.9) {
+                            // Stale -4 values detected, but current reward is different - clear history
+                            console.warn('Detected stale -4 rewards in history, clearing...');
+                            rewardHistory.value = [];
+                            stressHistory.value = [];
+                            return; // Exit early, will be called again with empty data
+                        }
+                    }
 
                     // Reward chart - x-axis grows with data
                     const rewardTrace = {
