@@ -406,9 +406,9 @@ def get_rl_status():
             "current_params": {k: float(v) for k, v in training_state["current_params"].items()} if training_state["current_params"] else {},
             "best_params": {k: float(v) for k, v in training_state["best_params"].items()} if training_state["best_params"] else {},
             "best_reward": float(training_state["best_reward"]),
-            "rewards": [float(x) for x in training_state["rewards"][-100:]],
-            "stress_history": [float(x) for x in training_state["stress_history"][-100:]],
-            "episode_rewards": [float(x) for x in training_state["episode_rewards"][-50:]],
+            "rewards": [float(x) for x in training_state["rewards"]],  # Send ALL rewards
+            "stress_history": [float(x) for x in training_state["stress_history"]],  # Send ALL
+            "episode_rewards": [float(x) for x in training_state["episode_rewards"]],  # Send ALL
             "sb3_available": bool(SB3_AVAILABLE),
         }
 
