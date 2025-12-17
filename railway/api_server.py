@@ -119,7 +119,9 @@ if SB3_AVAILABLE:
             self.params = {'diameter': 10.0, 'strut_thickness': 0.12, 'num_struts': 12, 'crown_height': 1.0, 'length': 20.0}
             
             if self.use_real_4c:
-                print("Environment initialized with REAL 4C solver")
+                print(f"Environment initialized with REAL 4C solver (FOURC_AVAILABLE={FOURC_AVAILABLE})")
+            else:
+                print(f"Environment initialized with MOCKUP solver (requested={use_real_4c}, available={FOURC_AVAILABLE})")
             
         def reset(self, seed=None, options=None):
             self.params = {'diameter': 10.0, 'strut_thickness': 0.12, 'num_struts': 12, 'crown_height': 1.0, 'length': 20.0}
@@ -150,6 +152,8 @@ if SB3_AVAILABLE:
             
             if self.use_real_4c:
                 # Run REAL 4C Simulation
+                print(f"Step {self.step_count}: Running REAL 4C simulation...")
+                start_time = time.time()
                 try:
                     p = StentParams(**self.params)
                     result = run_real_4c_simulation(p)
@@ -162,6 +166,9 @@ if SB3_AVAILABLE:
                         print(f"Env 4C Failed: {result.get('error')}")
                         stress = 1000.0 # High penalty
                         displacement = 10.0
+                        stress = 1000.0 # High penalty
+                        displacement = 10.0
+                    print(f"Step {self.step_count}: 4C Finished in {time.time()-start_time:.2f}s. Result: {stress:.2f} MPa")
                 except Exception as e:
                     print(f"Env Exception: {e}")
                     stress = 1000.0
