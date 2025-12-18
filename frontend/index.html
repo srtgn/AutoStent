@@ -270,11 +270,11 @@
                 </button>
                 <button @click="resetEnv" :disabled="training" class="btn btn-secondary">Reset</button>
                 
-                <!-- Download 4C Files button (only when using 4C) -->
-                <button v-if="useDocker && generatedFiles.length > 0" 
+                <!-- Download Training Files button (shows YAML files by step) -->
+                <button v-if="(useDocker || useRealRL) && generatedFiles.length > 0" 
                         @click="showDownloads = !showDownloads" 
                         class="btn btn-secondary text-xs">
-                    📥 Files ({{ generatedFiles.length }})
+                    📥 YAML Files ({{ generatedFiles.length }})
                 </button>
 
                 <!-- Checkbox consolidated to Header -->
@@ -293,30 +293,36 @@
                 <div class="flex-1"></div>
 
                 <!-- Download Panel (shown when showDownloads is true) -->
-                <div v-if="showDownloads" class="absolute right-0 top-full mt-2 bg-white rounded-lg shadow-xl border p-3 z-50 w-80 max-h-64 overflow-y-auto">
+                <div v-if="showDownloads" class="absolute right-0 top-full mt-2 bg-white rounded-lg shadow-xl border p-3 z-50 w-80 max-h-96 overflow-y-auto">
                     <div class="flex justify-between items-center mb-2">
-                        <span class="font-semibold text-sm">Generated 4C Files</span>
+                        <span class="font-semibold text-sm">Training YAML Files (by Step)</span>
                         <button @click="showDownloads = false" class="text-gray-400 hover:text-gray-600">✕</button>
                     </div>
                     <div v-if="generatedFiles.length === 0" class="text-gray-500 text-xs">
-                        No files generated yet. Run training with 4C enabled.
+                        No files generated yet. Run training with RL enabled.
                     </div>
-                    <div v-for="file in generatedFiles" :key="file.id" class="border-b py-2 last:border-b-0">
-                        <div class="text-xs text-gray-600 mb-1">
+                    <div v-for="file in generatedFiles" :key="file.step" class="border-b py-2 last:border-b-0">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-sm font-semibold text-gray-800">Step {{ file.step }}</span>
+                            <span class="text-xs px-2 py-0.5 rounded" 
+                                  :class="file.reward > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">
+                                R={{ file.reward?.toFixed(3) }}
+                            </span>
+                        </div>
+                        <div class="text-xs text-gray-500 mb-1">
                             D={{ file.params?.diameter?.toFixed(1) }}mm, 
                             L={{ file.params?.length?.toFixed(1) }}mm,
-                            t={{ file.params?.strut_thickness?.toFixed(2) }}mm
+                            t={{ file.params?.strut_thickness?.toFixed(3) }}mm,
+                            n={{ file.params?.num_struts }}
                         </div>
-                        <div class="flex gap-2">
-                            <button v-if="file.has_yaml" @click="downloadYaml(file.id)" 
+                        <div class="flex gap-2 items-center">
+                            <button @click="downloadYaml(file.step)" 
                                     class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded">
-                                📄 YAML
+                                📄 Download YAML
                             </button>
-                            <button v-if="file.has_vtu" @click="downloadVtu(file.id)"
-                                    class="text-xs bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded">
-                                🔷 VTU
-                            </button>
-                            <span class="text-xs text-gray-400 ml-auto">{{ formatTime(file.timestamp) }}</span>
+                            <span class="text-xs text-gray-400 ml-auto">
+                                σ={{ file.stress?.toFixed(1) }}MPa, δ={{ file.displacement?.toFixed(3) }}mm
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -343,8 +349,13 @@
             <div>
                 <!-- Reward Chart -->
                 <div class="mb-4">
-                    <div class="text-xs text-gray-500 mb-1 uppercase">Reward Evolution</div>
-                    <div id="reward-chart" style="height: 200px;"></div>
+                    <div class="text-xs text-gray-500 mb-1 uppercase flex items-center gap-2">
+                        Reward Evolution
+                        <span class="text-blue-500 font-normal normal-case" v-if="rewardHistory.length > 0">
+                            (click points to download YAML)
+                        </span>
+                    </div>
+                    <div id="reward-chart" style="height: 200px; cursor: pointer;"></div>
                 </div>
 
                 <!-- Stress Chart -->
@@ -420,6 +431,70 @@
         </div>
 
         <!-- Webviewer removed - caused 404 errors -->
+        
+        <!-- Download Modal for Training Steps -->
+        <div v-if="downloadModal.show" 
+             class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+             @click.self="closeDownloadModal">
+            <div class="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4 transform transition-all">
+                <div class="flex justify-between items-start mb-4">
+                    <h3 class="text-lg font-bold text-gray-900">
+                        📥 Download YAML - Step {{ downloadModal.step }}
+                    </h3>
+                    <button @click="closeDownloadModal" 
+                            class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+                </div>
+                
+                <div v-if="downloadModal.loading" class="text-center py-8">
+                    <div class="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
+                    <p class="text-gray-500 mt-2">Loading step info...</p>
+                </div>
+                
+                <div v-else>
+                    <!-- Step Metrics -->
+                    <div class="grid grid-cols-3 gap-3 mb-4">
+                        <div class="bg-blue-50 rounded-lg p-3 text-center">
+                            <div class="text-xs text-blue-600 uppercase">Reward</div>
+                            <div class="text-lg font-bold" :class="downloadModal.reward > 0 ? 'text-green-600' : 'text-red-600'">
+                                {{ downloadModal.reward.toFixed(3) }}
+                            </div>
+                        </div>
+                        <div class="bg-red-50 rounded-lg p-3 text-center">
+                            <div class="text-xs text-red-600 uppercase">Stress</div>
+                            <div class="text-lg font-bold text-red-600">{{ downloadModal.stress.toFixed(1) }} MPa</div>
+                        </div>
+                        <div class="bg-purple-50 rounded-lg p-3 text-center">
+                            <div class="text-xs text-purple-600 uppercase">Disp.</div>
+                            <div class="text-lg font-bold text-purple-600">{{ downloadModal.displacement.toFixed(3) }} mm</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Stent Parameters -->
+                    <div class="bg-gray-50 rounded-lg p-3 mb-4">
+                        <div class="text-xs text-gray-500 uppercase mb-2">Stent Parameters</div>
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div><span class="text-gray-500">Diameter:</span> {{ (downloadModal.params.diameter || 0).toFixed(2) }} mm</div>
+                            <div><span class="text-gray-500">Length:</span> {{ (downloadModal.params.length || 0).toFixed(2) }} mm</div>
+                            <div><span class="text-gray-500">Thickness:</span> {{ (downloadModal.params.strut_thickness || 0).toFixed(3) }} mm</div>
+                            <div><span class="text-gray-500">Struts:</span> {{ downloadModal.params.num_struts || 0 }}</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Download Button -->
+                    <button @click="downloadTrainingYaml(downloadModal.step)"
+                            class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                        </svg>
+                        Download stent_step_{{ downloadModal.step }}.4C.yaml
+                    </button>
+                    
+                    <p class="text-xs text-gray-400 text-center mt-3">
+                        This YAML file can be run with the 4C solver to simulate this stent design
+                    </p>
+                </div>
+            </div>
+        </div>
     </div>
     </div>
 
@@ -515,6 +590,50 @@
                 const generatedFiles = ref([]);
                 const showDownloads = ref(false);
                 
+                // Download modal state (for curve click downloads)
+                const downloadModal = ref({
+                    show: false,
+                    step: 0,
+                    reward: 0,
+                    stress: 0,
+                    displacement: 0,
+                    params: {},
+                    loading: false
+                });
+                
+                // Show download modal for a training step
+                async function showDownloadModal(step, reward) {
+                    downloadModal.value.show = true;
+                    downloadModal.value.step = step;
+                    downloadModal.value.reward = reward;
+                    downloadModal.value.loading = true;
+                    
+                    try {
+                        const res = await fetch(`${backendUrl}/training-yaml-info/${step}`);
+                        const data = await res.json();
+                        if (data.data) {
+                            downloadModal.value.stress = data.data.stress || 0;
+                            downloadModal.value.displacement = data.data.displacement || 0;
+                            downloadModal.value.params = data.data.params || {};
+                            downloadModal.value.step = data.step || data.closest_step || step;
+                        }
+                    } catch (e) {
+                        console.error('Failed to fetch step info:', e);
+                    }
+                    downloadModal.value.loading = false;
+                }
+                
+                // Download YAML for a training step
+                function downloadTrainingYaml(step) {
+                    window.location.href = `${backendUrl}/training-yaml/${step}`;
+                    downloadModal.value.show = false;
+                }
+                
+                // Close download modal
+                function closeDownloadModal() {
+                    downloadModal.value.show = false;
+                }
+                
                 // Check 4C availability on the server
                 async function check4CStatus() {
                     fourcStatus.value = 'checking';
@@ -548,22 +667,22 @@
                     }
                 }
                 
-                // Fetch list of generated files for download
+                // Fetch list of training files for download (by step number)
                 async function fetchGeneratedFiles() {
                     try {
-                        const res = await fetch(`${backendUrl}/generated-files`);
+                        const res = await fetch(`${backendUrl}/training-files`);
                         const data = await res.json();
                         if (data.files) {
                             generatedFiles.value = data.files;
                         }
                     } catch (e) {
-                        console.error('Failed to fetch generated files:', e);
+                        console.error('Failed to fetch training files:', e);
                     }
                 }
                 
-                // Download YAML file
-                function downloadYaml(simId) {
-                    window.open(`${backendUrl}/download-yaml/${simId}`, '_blank');
+                // Download YAML file by step number
+                function downloadYaml(step) {
+                    window.location.href = `${backendUrl}/training-yaml/${step}`;
                 }
                 
                 // Download VTU file
@@ -690,8 +809,8 @@
                                     // If progress went backward, keep previous (might be backend reset)
                                 }
                                 
-                                // Fetch generated files periodically when using 4C
-                                if (useDocker.value && steps.value % 10 === 0) {
+                                // Fetch training files periodically (for download list)
+                                if ((useDocker.value || useRealRL.value) && steps.value % 10 === 0) {
                                     fetchGeneratedFiles();
                                 }
 
@@ -1259,9 +1378,17 @@
                     const rewardTrace = {
                         x: Array.from({ length: totalStepsNow }, (_, i) => i + 1),
                         y: paddedRewards,
-                        type: 'scatter', mode: 'lines',
+                        type: 'scatter', 
+                        mode: 'lines+markers',  // Add markers for click targets
                         line: { color: '#2563eb', width: 1.5 },
-                        fill: 'tozeroy', fillcolor: 'rgba(37, 99, 235, 0.1)'
+                        marker: { 
+                            size: 6, 
+                            color: paddedRewards.map(r => r > 0 ? '#22c55e' : '#ef4444'),
+                            opacity: 0.7
+                        },
+                        fill: 'tozeroy', 
+                        fillcolor: 'rgba(37, 99, 235, 0.1)',
+                        hovertemplate: '<b>Step %{x}</b><br>Reward: %{y:.3f}<br><i>Click to download YAML</i><extra></extra>'
                     };
 
                     const traces = [rewardTrace];
@@ -1274,17 +1401,33 @@
                             x: Array.from({ length: ma.length }, (_, i) => i + 20),
                             y: ma,
                             type: 'scatter', mode: 'lines',
-                            line: { color: '#dc2626', width: 2, dash: 'dash' }
+                            line: { color: '#dc2626', width: 2, dash: 'dash' },
+                            hoverinfo: 'skip'  // Don't show hover for moving average
                         });
                     }
 
                     Plotly.react('reward-chart', traces, {
                         margin: { l: 50, r: 10, t: 10, b: 35 },
-                        xaxis: { title: 'Step', gridcolor: '#f0f0f0', range: [0, totalStepsNow + 10] },
+                        xaxis: { title: 'Step (click point to download YAML)', gridcolor: '#f0f0f0', range: [0, totalStepsNow + 10] },
                         yaxis: { title: 'Reward', gridcolor: '#f0f0f0' },
                         paper_bgcolor: 'white', plot_bgcolor: 'white',
-                        showlegend: false
+                        showlegend: false,
+                        hovermode: 'closest'
                     }, { responsive: true });
+                    
+                    // Add click handler for downloading YAML
+                    const rewardChart = document.getElementById('reward-chart');
+                    rewardChart.removeAllListeners?.('plotly_click');  // Remove old listeners
+                    rewardChart.on('plotly_click', async function(data) {
+                        if (data.points && data.points.length > 0) {
+                            const point = data.points[0];
+                            const step = point.x;
+                            const reward = point.y;
+                            
+                            // Show confirmation and download
+                            showDownloadModal(step, reward);
+                        }
+                    });
 
                     // Stress chart - x-axis matches data points
                     let paddedStress = [...stressHistory.value];
@@ -1346,7 +1489,7 @@
                 });
 
                 return {
-                    params, metrics, currentReward, episodeRewards,
+                    params, metrics, currentReward, episodeRewards, rewardHistory,
                     episodes, steps, avgReward, training, progress, trainSteps,
                     trainAgent, stopTraining, resetEnv,
                     // Real RL
@@ -1356,6 +1499,8 @@
                     // Generated files download
                     generatedFiles, showDownloads,
                     fetchGeneratedFiles, downloadYaml, downloadVtu, formatTime,
+                    // Training step YAML download (click on curve)
+                    downloadModal, showDownloadModal, downloadTrainingYaml, closeDownloadModal,
                     // Comparison
                     comparing, comparisonDone, comparisonEpisodes,
                     randomMean, trainedMean, improvement,

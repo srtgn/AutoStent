@@ -216,6 +216,7 @@ training_state = {
     "stress_history": [],
     "displacement_history": [],
     "episode_rewards": [],
+    "yaml_files": {},  # step -> yaml_content for downloading
 }
 
 # ===== STENT ENVIRONMENT FOR RL =====
@@ -376,6 +377,16 @@ if SB3_AVAILABLE:
                                 d, t = env.params['diameter'], env.params['strut_thickness']
                                 displacement = 0.3 * (env.params['length'] / 20) * (0.12 / max(t, 0.05))
                             training_state["displacement_history"].append(float(displacement))
+                            
+                            # Save YAML content for this step (for download feature)
+                            yaml_content = generate_yaml_content(env.params, logged_steps)
+                            training_state["yaml_files"][logged_steps] = {
+                                "yaml": yaml_content,
+                                "params": dict(env.params),
+                                "reward": float(reward),
+                                "stress": float(stress),
+                                "displacement": float(displacement)
+                            }
                     except Exception as e:
                         # print(f"Callback error: {e}")
                         pass
@@ -409,6 +420,7 @@ if SB3_AVAILABLE:
             training_state["displacement_history"] = []
             training_state["episode_rewards"] = []
             training_state["best_reward"] = -100.0
+            training_state["yaml_files"] = {}  # Clear previous YAML files
         
         try:
             env = SimpleStentEnv(use_real_4c=use_real_4c)
@@ -560,6 +572,105 @@ except ImportError as e:
     traceback.print_exc()
     MESH_TOOLS_AVAILABLE = False
     PV_AVAILABLE = False
+
+
+def generate_yaml_content(params_dict: dict, step: int = 0) -> str:
+    """Generate YAML content string for a stent configuration (for display/download)."""
+    d = params_dict.get('diameter', 10.0)
+    l = params_dict.get('length', 20.0)
+    t = params_dict.get('strut_thickness', 0.12)
+    n = params_dict.get('num_struts', 12)
+    h = params_dict.get('crown_height', 1.0)
+    
+    return f"""# 4C Stent Simulation - Step {step}
+# Generated during RL training
+# Download this file to run with 4C solver
+
+TITLE: Stent design from RL training step {step}
+
+# Geometric Parameters:
+#   Diameter: {d:.3f} mm
+#   Length: {l:.3f} mm
+#   Strut Thickness: {t:.4f} mm
+#   Number of Struts: {n}
+#   Crown Height: {h:.3f} mm
+
+PROBLEM TYPE:
+  PROBLEMTYPE: Structure
+
+IO:
+  OUTPUT_SPRING: true
+  STRUCT_STRESS: "Cauchy"
+  STRUCT_STRAIN: "GL"
+  VERBOSITY: "Standard"
+  WRITE_INITIAL_STATE: false
+
+IO/RUNTIME VTK OUTPUT:
+  INTERVAL_STEPS: 1
+  OUTPUT_DATA_FORMAT: binary
+
+IO/RUNTIME VTK OUTPUT/STRUCTURE:
+  OUTPUT_STRUCTURE: true
+  DISPLACEMENT: true
+  STRESS_STRAIN: true
+  GAUSS_POINT_DATA_OUTPUT_TYPE: nodes
+
+SOLVER 1:
+  SOLVER: "Superlu"
+  NAME: "Structure_Solver"
+
+STRUCTURAL DYNAMIC:
+  INT_STRATEGY: "Standard"
+  DYNAMICTYPE: "Statics"
+  TIMESTEP: 1.0
+  NUMSTEP: 1
+  MAXTIME: 1.0
+  TOLDISP: 1e-06
+  TOLRES: 1e-06
+  LOADLIN: true
+  LINEAR_SOLVER: 1
+
+MATERIALS:
+  - MAT: 1
+    MAT_ElastHyper:
+      NUMMAT: 1
+      MATIDS: [2]
+      DENS: 7.8e-9  # Steel density in kg/mm³
+  - MAT: 2
+    ELAST_CoupNeoHooke:
+      YOUNG: 200000.0  # MPa (Steel)
+      NUE: 0.3
+
+# NOTE: This YAML requires a VTU mesh file to run with 4C.
+# Generate mesh using the autostent.geometry module or mesh_generator.py
+# The mesh file should be named: stent_step{step}.vtu
+
+STRUCTURE GEOMETRY:
+  FILE: stent_step{step}.vtu
+  ELEMENT_BLOCKS:
+    - ID: 1
+      SOLID:
+        HEX8:
+          MAT: 1
+          KINEM: nonlinear
+
+# Boundary conditions (applied to mesh node sets)
+DESIGN POINT DIRICH CONDITIONS:
+  - E: 1
+    ENTITY_TYPE: node_set_id
+    NUMDOF: 3
+    ONOFF: [1, 1, 1]
+    VAL: [0.0, 0.0, 0.0]
+    FUNCT: [0, 0, 0]
+
+DESIGN POINT NEUMANN CONDITIONS:
+  - E: 2
+    ENTITY_TYPE: node_set_id
+    NUMDOF: 3
+    ONOFF: [0, 0, 1]
+    VAL: [0.0, 0.0, 0.01]
+    FUNCT: [0, 0, 0]
+"""
 
 
 def generate_4c_yaml(params: StentParams, output_path: Path):
@@ -1149,7 +1260,90 @@ def reset_training():
         training_state["displacement_history"] = []
         training_state["episode_rewards"] = []
         training_state["best_reward"] = -100.0
+        training_state["yaml_files"] = {}  # Clear YAML files
     return {"status": "reset"}
+
+
+# ===== TRAINING FILES DOWNLOAD ENDPOINTS =====
+
+@app.get("/training-files")
+def list_training_files():
+    """List all YAML files generated during training (for curve click download)."""
+    with state_lock:
+        yaml_files = training_state.get("yaml_files", {})
+        files = []
+        for step, data in yaml_files.items():
+            files.append({
+                "step": step,
+                "reward": data.get("reward", 0),
+                "stress": data.get("stress", 0),
+                "displacement": data.get("displacement", 0),
+                "params": data.get("params", {})
+            })
+        # Sort by step
+        files.sort(key=lambda x: x["step"])
+        return {
+            "files": files,
+            "count": len(files),
+            "total_steps": training_state.get("logged_steps", 0)
+        }
+
+
+@app.get("/training-yaml/{step}")
+def download_training_yaml(step: int):
+    """Download YAML file for a specific training step."""
+    from fastapi.responses import PlainTextResponse
+    
+    with state_lock:
+        yaml_files = training_state.get("yaml_files", {})
+        
+        if step not in yaml_files:
+            # Try to find closest step
+            available_steps = list(yaml_files.keys())
+            if not available_steps:
+                raise HTTPException(status_code=404, detail="No training data available")
+            closest = min(available_steps, key=lambda x: abs(x - step))
+            step = closest
+        
+        data = yaml_files.get(step)
+        if not data:
+            raise HTTPException(status_code=404, detail=f"Step {step} not found")
+        
+        yaml_content = data.get("yaml", "")
+        
+        return PlainTextResponse(
+            content=yaml_content,
+            headers={
+                "Content-Disposition": f"attachment; filename=stent_step_{step}.4C.yaml",
+                "X-Step": str(step),
+                "X-Reward": str(data.get("reward", 0)),
+                "X-Stress": str(data.get("stress", 0)),
+                "X-Displacement": str(data.get("displacement", 0))
+            }
+        )
+
+
+@app.get("/training-yaml-info/{step}")
+def get_training_yaml_info(step: int):
+    """Get info about a specific training step (for tooltip display)."""
+    with state_lock:
+        yaml_files = training_state.get("yaml_files", {})
+        
+        if step not in yaml_files:
+            available_steps = list(yaml_files.keys())
+            if not available_steps:
+                return {"error": "No training data available", "available_steps": []}
+            closest = min(available_steps, key=lambda x: abs(x - step))
+            return {
+                "requested_step": step,
+                "closest_step": closest,
+                "data": yaml_files.get(closest)
+            }
+        
+        return {
+            "step": step,
+            "data": yaml_files.get(step)
+        }
 
 @app.post("/test-4c")
 def test_4c_simulation(request: SimulationRequest):
