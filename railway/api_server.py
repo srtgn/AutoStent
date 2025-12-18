@@ -378,10 +378,39 @@ if SB3_AVAILABLE:
                                 displacement = 0.3 * (env.params['length'] / 20) * (0.12 / max(t, 0.05))
                             training_state["displacement_history"].append(float(displacement))
                             
-                            # Save YAML content for this step (for download feature)
+                            # Save YAML and VTU content for this step (for download feature)
                             yaml_content = generate_yaml_content(env.params, logged_steps)
+                            
+                            # Generate VTU mesh for this step
+                            vtu_content = None
+                            if MESH_TOOLS_AVAILABLE:
+                                try:
+                                    import tempfile
+                                    geometry = StentGeometry(
+                                        diameter=env.params['diameter'],
+                                        length=env.params['length'],
+                                        strut_thickness=env.params['strut_thickness'],
+                                        num_struts=env.params['num_struts'],
+                                        crown_height=env.params.get('crown_height', 1.0)
+                                    )
+                                    nodes, elements, fixed_nodes, loaded_nodes = generate_cylindrical_stent_mesh(
+                                        geometry, n_circumferential_per_strut=4, n_radial=2
+                                    )
+                                    # Write to temp file and read back as bytes
+                                    with tempfile.NamedTemporaryFile(suffix='.vtu', delete=False) as tmp:
+                                        write_vtu_file(nodes, elements, tmp.name,
+                                                      fixed_nodes=np.array(fixed_nodes),
+                                                      loaded_nodes=np.array(loaded_nodes))
+                                        tmp.flush()
+                                        with open(tmp.name, 'rb') as f:
+                                            vtu_content = f.read()
+                                        os.unlink(tmp.name)
+                                except Exception as e:
+                                    print(f"Failed to generate VTU for step {logged_steps}: {e}")
+                            
                             training_state["yaml_files"][logged_steps] = {
                                 "yaml": yaml_content,
+                                "vtu": vtu_content,  # Binary VTU content
                                 "params": dict(env.params),
                                 "reward": float(reward),
                                 "stress": float(stress),
@@ -1268,7 +1297,7 @@ def reset_training():
 
 @app.get("/training-files")
 def list_training_files():
-    """List all YAML files generated during training (for curve click download)."""
+    """List all YAML/VTU files generated during training (for curve click download)."""
     with state_lock:
         yaml_files = training_state.get("yaml_files", {})
         files = []
@@ -1278,7 +1307,9 @@ def list_training_files():
                 "reward": data.get("reward", 0),
                 "stress": data.get("stress", 0),
                 "displacement": data.get("displacement", 0),
-                "params": data.get("params", {})
+                "params": data.get("params", {}),
+                "has_yaml": data.get("yaml") is not None,
+                "has_vtu": data.get("vtu") is not None
             })
         # Sort by step
         files.sort(key=lambda x: x["step"])
@@ -1319,6 +1350,39 @@ def download_training_yaml(step: int):
                 "X-Reward": str(data.get("reward", 0)),
                 "X-Stress": str(data.get("stress", 0)),
                 "X-Displacement": str(data.get("displacement", 0))
+            }
+        )
+
+
+@app.get("/training-vtu/{step}")
+def download_training_vtu(step: int):
+    """Download VTU mesh file for a specific training step."""
+    from fastapi.responses import Response
+    
+    with state_lock:
+        yaml_files = training_state.get("yaml_files", {})
+        
+        if step not in yaml_files:
+            available_steps = list(yaml_files.keys())
+            if not available_steps:
+                raise HTTPException(status_code=404, detail="No training data available")
+            closest = min(available_steps, key=lambda x: abs(x - step))
+            step = closest
+        
+        data = yaml_files.get(step)
+        if not data:
+            raise HTTPException(status_code=404, detail=f"Step {step} not found")
+        
+        vtu_content = data.get("vtu")
+        if not vtu_content:
+            raise HTTPException(status_code=404, detail=f"VTU mesh not available for step {step}")
+        
+        return Response(
+            content=vtu_content,
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": f"attachment; filename=stent_step_{step}.vtu",
+                "X-Step": str(step)
             }
         )
 
