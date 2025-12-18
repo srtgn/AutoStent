@@ -628,11 +628,16 @@ MATERIALS:
     )
     
     # Write VTU file (4C prefers this format)
+    # Include block_id and point_set arrays required by 4C
     vtu_path = output_path.parent / f"{output_path.stem}.vtu"
     if PV_AVAILABLE:
         try:
-            write_vtu_file(nodes, elements, str(vtu_path))
-            print(f"✓ Generated VTU file: {vtu_path}")
+            write_vtu_file(
+                nodes, elements, str(vtu_path),
+                fixed_nodes=np.array(fixed_nodes),
+                loaded_nodes=np.array(loaded_nodes)
+            )
+            print(f"✓ Generated VTU file: {vtu_path} with block_id and point_sets")
             use_vtu = True
         except Exception as e:
             print(f"⚠ Failed to write VTU file: {e}, using inline geometry")
@@ -728,33 +733,41 @@ MATERIALS:
         # Loaded surface: radial pressure on outer surface
         pressure = params.diameter * 0.1  # Radial pressure in MPa
         
-        # Define node sets (needed for both VTU and inline geometry)
-        # Use 1-indexed node IDs for 4C
-        fixed_node_ids = [n+1 for n in fixed_nodes]
-        loaded_node_ids = [n+1 for n in loaded_nodes]
-        
-        # Write node sets section
-        f.write(f"""
-# Node sets for boundary conditions
-# Fixed end: {len(fixed_nodes)} nodes at z=0
-# Loaded surface: {len(loaded_nodes)} nodes on outer radius
+        if use_vtu:
+            # When using VTU, point_sets are embedded in the file
+            # Use DESIGN POINT conditions (references point_set_1 and point_set_2)
+            f.write(f"""
+# Boundary conditions using point_set arrays from VTU file
+# point_set_1: {len(fixed_nodes)} fixed nodes at z=0
+# point_set_2: {len(loaded_nodes)} loaded nodes on outer radius
 
-DNODE-NODE SETS:
+DESIGN POINT DIRICH CONDITIONS:
+  - E: 1
+    NUMDOF: 3
+    ONOFF: [1, 1, 1]
+    VAL: [0.0, 0.0, 0.0]
+    FUNCT: [0, 0, 0]
+
+DESIGN POINT NEUMANN CONDITIONS:
+  - E: 2
+    NUMDOF: 3
+    ONOFF: [1, 1, 0]
+    VAL: [{pressure}, {pressure}, 0.0]
+    FUNCT: [0, 0, 0]
 """)
-        # Write fixed nodes (limit to reasonable size for YAML)
-        f.write(f"  DSURF 1:\n")
-        for i in range(0, len(fixed_node_ids), 20):
-            chunk = fixed_node_ids[i:i+20]
-            f.write(f"    DNODES: [{', '.join(map(str, chunk))}]\n")
-        
-        f.write(f"  DSURF 2:\n")
-        for i in range(0, len(loaded_node_ids), 20):
-            chunk = loaded_node_ids[i:i+20]
-            f.write(f"    DNODES: [{', '.join(map(str, chunk))}]\n")
-        
-        # Boundary conditions using design surfaces
-        f.write(f"""
-# Fixed boundary: z=0 end, all DOFs constrained
+        else:
+            # Inline geometry - define node sets in YAML
+            fixed_node_ids = [n+1 for n in fixed_nodes]
+            loaded_node_ids = [n+1 for n in loaded_nodes]
+            
+            f.write(f"""
+# Node sets for boundary conditions (inline geometry)
+DNODE-NODE SETS:
+  DSURF 1:
+    DNODES: [{', '.join(map(str, fixed_node_ids[:50]))}]
+  DSURF 2:
+    DNODES: [{', '.join(map(str, loaded_node_ids[:50]))}]
+
 DESIGN SURF DIRICH CONDITIONS:
   - E: 1
     NUMDOF: 3
@@ -762,14 +775,12 @@ DESIGN SURF DIRICH CONDITIONS:
     VAL: [0.0, 0.0, 0.0]
     FUNCT: [0, 0, 0]
 
-# Pressure load: outer surface, radial pressure
 DESIGN SURF NEUMANN CONDITIONS:
   - E: 2
     NUMDOF: 3
-    ONOFF: [1, 1, 1]
+    ONOFF: [1, 1, 0]
     VAL: [{pressure}, {pressure}, 0.0]
     FUNCT: [0, 0, 0]
-    TYPE: "neum_live"
 """)
 
 
@@ -1189,10 +1200,16 @@ def check_mesh_tools():
                 import tempfile
                 temp_vtu = Path(tempfile.mktemp(suffix=".vtu"))
                 try:
-                    write_vtu_file(nodes, elements, str(temp_vtu))
+                    write_vtu_file(
+                        nodes, elements, str(temp_vtu),
+                        fixed_nodes=np.array(fixed),
+                        loaded_nodes=np.array(loaded)
+                    )
                     result["vtu_generation"] = {
                         "success": True,
-                        "file_size": temp_vtu.stat().st_size
+                        "file_size": temp_vtu.stat().st_size,
+                        "has_block_id": True,
+                        "has_point_sets": True
                     }
                     temp_vtu.unlink()
                 except Exception as e:
@@ -1422,13 +1439,18 @@ def test_4c_docker_direct():
                         geometry, n_circumferential_per_strut=2, n_radial=1  # Coarse mesh
                     )
                     
-                    # Write VTU file
+                    # Write VTU file with required 4C arrays (block_id, point_sets)
                     vtu_path = work_dir / "stent_mesh.vtu"
-                    write_vtu_file(nodes, elements, str(vtu_path))
-                    print(f"✓ Generated VTU: {len(nodes)} nodes, {len(elements)} elements")
+                    write_vtu_file(
+                        nodes, elements, str(vtu_path),
+                        fixed_nodes=np.array(fixed_nodes),
+                        loaded_nodes=np.array(loaded_nodes)
+                    )
+                    print(f"✓ Generated VTU: {len(nodes)} nodes, {len(elements)} elements, with block_id and point_sets")
                     
-                    # Create YAML referencing VTU
+                    # Create YAML referencing VTU with point_set boundary conditions
                     test_yaml = work_dir / "stent_test.4C.yaml"
+                    pressure = 1.0  # MPa radial pressure
                     test_yaml.write_text(f"""TITLE: Generated stent test
 PROBLEM TYPE:
   PROBLEMTYPE: Structure
@@ -1439,11 +1461,17 @@ SOLVER 1:
 
 IO:
   STRUCT_STRESS: "Cauchy"
+  STRUCT_STRAIN: "GL"
   VERBOSITY: "Standard"
 
 IO/RUNTIME VTK OUTPUT:
   INTERVAL_STEPS: 1
   OUTPUT_DATA_FORMAT: binary
+
+IO/RUNTIME VTK OUTPUT/STRUCTURE:
+  OUTPUT_STRUCTURE: true
+  DISPLACEMENT: true
+  STRESS_STRAIN: true
 
 STRUCTURAL DYNAMIC:
   INT_STRATEGY: "Standard"
@@ -1474,6 +1502,21 @@ STRUCTURE GEOMETRY:
         HEX8:
           MAT: 1
           KINEM: nonlinear
+
+# Boundary conditions using point_set arrays from VTU
+DESIGN POINT DIRICH CONDITIONS:
+  - E: 1
+    NUMDOF: 3
+    ONOFF: [1, 1, 1]
+    VAL: [0.0, 0.0, 0.0]
+    FUNCT: [0, 0, 0]
+
+DESIGN POINT NEUMANN CONDITIONS:
+  - E: 2
+    NUMDOF: 3
+    ONOFF: [1, 1, 0]
+    VAL: [{pressure}, {pressure}, 0.0]
+    FUNCT: [0, 0, 0]
 """)
                     tutorial_yaml = test_yaml
                     use_generated_stent = True

@@ -181,22 +181,34 @@ if __name__ == "__main__":
     
     # Test VTU writing
     if PV_AVAILABLE:
-        vtu_path = write_vtu_file(nodes, elements, "test_stent_mesh.vtu")
-        print(f"Wrote VTU file to {vtu_path}")
+        vtu_path = write_vtu_file(
+            nodes, elements, "test_stent_mesh.vtu",
+            fixed_nodes=np.array(fixed_nodes),
+            loaded_nodes=np.array(loaded_nodes)
+        )
+        print(f"Wrote VTU file to {vtu_path} with block_id and point_sets")
 
 
 def write_vtu_file(
     nodes: np.ndarray,
     elements: np.ndarray,
-    output_path: str
+    output_path: str,
+    fixed_nodes: np.ndarray = None,
+    loaded_nodes: np.ndarray = None
 ) -> Path:
     """
     Write mesh as VTU (VTK unstructured) file for 4C.
+    
+    4C requires:
+    - Exactly one integer-typed cell-array `block_id` defining element blocks
+    - Optional integer-type point-arrays 'point_set_#' for node sets
     
     Args:
         nodes: (N, 3) array of node coordinates
         elements: (M, 8) array of hex8 element connectivity (0-indexed)
         output_path: Output VTU file path
+        fixed_nodes: Optional array of fixed node indices (0-indexed)
+        loaded_nodes: Optional array of loaded node indices (0-indexed)
         
     Returns:
         Path to written VTU file
@@ -205,8 +217,8 @@ def write_vtu_file(
         raise ImportError("pyvista not available, cannot write VTU files")
     
     # Create unstructured grid
-    # PyVista expects 1-indexed connectivity, but we have 0-indexed
-    # Also need to specify cell type (VTK_HEXAHEDRON = 12)
+    # PyVista expects 0-indexed connectivity
+    # Cell type: VTK_HEXAHEDRON = 12
     cell_array = []
     for elem in elements:
         cell_array.append(8)  # Number of points in hex8
@@ -214,6 +226,23 @@ def write_vtu_file(
     
     # Create grid
     grid = pv.UnstructuredGrid(cell_array, [12] * len(elements), nodes)
+    
+    # Add required cell array: block_id (all elements in block 1)
+    block_ids = np.ones(len(elements), dtype=np.int32)
+    grid.cell_data['block_id'] = block_ids
+    
+    # Add point set arrays for boundary conditions
+    if fixed_nodes is not None and len(fixed_nodes) > 0:
+        # point_set_1: fixed nodes (value=1 if in set, 0 otherwise)
+        point_set_1 = np.zeros(len(nodes), dtype=np.int32)
+        point_set_1[fixed_nodes] = 1
+        grid.point_data['point_set_1'] = point_set_1
+    
+    if loaded_nodes is not None and len(loaded_nodes) > 0:
+        # point_set_2: loaded nodes (value=1 if in set, 0 otherwise)
+        point_set_2 = np.zeros(len(nodes), dtype=np.int32)
+        point_set_2[loaded_nodes] = 1
+        grid.point_data['point_set_2'] = point_set_2
     
     # Write VTU file
     output_path_obj = Path(output_path)
