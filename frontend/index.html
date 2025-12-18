@@ -1450,23 +1450,32 @@
                     const isBackendMode = useDocker.value || useRealRL.value;
 
                     // Reward chart - markers only in backend mode
-                    const rewardTrace = {
-                        x: Array.from({ length: totalStepsNow }, (_, i) => i + 1),
-                        y: paddedRewards,
-                        type: 'scatter', 
-                        mode: isBackendMode ? 'lines+markers' : 'lines',
-                        line: { color: '#2563eb', width: 1.5 },
-                        marker: isBackendMode ? { 
-                            size: 5, 
-                            color: paddedRewards.map(r => r > 0 ? '#22c55e' : '#ef4444'),
-                            opacity: 0.6
-                        } : undefined,
-                        fill: 'tozeroy', 
-                        fillcolor: 'rgba(37, 99, 235, 0.1)',
-                        hovertemplate: '<b>Step %{x}</b><br>Reward: %{y:.3f}<extra></extra>'
-                    };
-
-                    const traces = [rewardTrace];
+                    // Always include a zero baseline trace to ensure axes show when empty
+                    const traces = [{
+                        x: [0, xAxisMax],
+                        y: [0, 0],
+                        type: 'scatter', mode: 'lines',
+                        line: { color: '#e5e7eb', width: 1 },
+                        hoverinfo: 'skip'
+                    }];
+                    
+                    if (totalStepsNow > 0) {
+                        traces.push({
+                            x: Array.from({ length: totalStepsNow }, (_, i) => i + 1),
+                            y: paddedRewards,
+                            type: 'scatter', 
+                            mode: isBackendMode ? 'lines+markers' : 'lines',
+                            line: { color: '#2563eb', width: 1.5 },
+                            marker: isBackendMode ? { 
+                                size: 5, 
+                                color: paddedRewards.map(r => r > 0 ? '#22c55e' : '#ef4444'),
+                                opacity: 0.6
+                            } : undefined,
+                            fill: 'tozeroy', 
+                            fillcolor: 'rgba(37, 99, 235, 0.1)',
+                            hovertemplate: '<b>Step %{x}</b><br>Reward: %{y:.3f}<extra></extra>'
+                        });
+                    }
                     if (totalStepsNow > 20) {
                         const ma = [];
                         for (let i = 19; i < totalStepsNow; i++) {
@@ -1529,17 +1538,25 @@
                     const stressYAxis = { title: 'MPa', gridcolor: '#f0f0f0' };
                     if (totalStepsNow === 0) stressYAxis.range = [0, 200];
                     
-                    Plotly.react('stress-chart', [{
-                        x: Array.from({ length: totalStepsNow }, (_, i) => i + 1),
-                        y: paddedStress,
-                        type: 'scatter', mode: 'lines',
-                        line: { color: '#dc2626', width: 1.5 }
-                    }, {
+                    // Build stress traces - always include threshold line for axes visibility
+                    const stressTraces = [{
                         x: [0, xAxisMax],
                         y: [150, 150],
                         type: 'scatter', mode: 'lines',
-                        line: { color: '#9ca3af', width: 1, dash: 'dot' }
-                    }], {
+                        line: { color: '#9ca3af', width: 1, dash: 'dot' },
+                        hoverinfo: 'skip'
+                    }];
+                    
+                    if (totalStepsNow > 0) {
+                        stressTraces.unshift({
+                            x: Array.from({ length: totalStepsNow }, (_, i) => i + 1),
+                            y: paddedStress,
+                            type: 'scatter', mode: 'lines',
+                            line: { color: '#dc2626', width: 1.5 }
+                        });
+                    }
+                    
+                    Plotly.react('stress-chart', stressTraces, {
                         margin: { l: 50, r: 10, t: 10, b: 35 },
                         xaxis: { title: 'Step', gridcolor: '#f0f0f0', range: [0, xAxisMax] },
                         yaxis: stressYAxis,
