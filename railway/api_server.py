@@ -1424,29 +1424,44 @@ def test_4c_docker_direct():
     
     try:
         use_generated_stent = False
-        use_simple_cube = False  # Cube test passed! Now test stent mesh
+        use_simple_cube = True  # Test 2x2x2 cube (8 elements) first
         
         if use_simple_cube and MESH_TOOLS_AVAILABLE:
-            # Create a simple single-element cube test first
-            print("Creating simple cube test...")
+            # Create a 2x2x2 cube mesh (8 elements) to test multi-element VTU
+            print("Creating 2x2x2 cube test (8 elements)...")
             try:
-                # Single hex8 cube: 1mm x 1mm x 1mm
-                cube_nodes = np.array([
-                    [0.0, 0.0, 0.0],  # 0
-                    [1.0, 0.0, 0.0],  # 1
-                    [1.0, 1.0, 0.0],  # 2
-                    [0.0, 1.0, 0.0],  # 3
-                    [0.0, 0.0, 1.0],  # 4
-                    [1.0, 0.0, 1.0],  # 5
-                    [1.0, 1.0, 1.0],  # 6
-                    [0.0, 1.0, 1.0],  # 7
-                ])
-                cube_elements = np.array([[0, 1, 2, 3, 4, 5, 6, 7]])
+                # Generate 3x3x3 = 27 nodes for 2x2x2 = 8 elements
+                cube_nodes = []
+                node_map = {}
+                for iz in range(3):
+                    for iy in range(3):
+                        for ix in range(3):
+                            node_id = len(cube_nodes)
+                            cube_nodes.append([float(ix), float(iy), float(iz)])
+                            node_map[(ix, iy, iz)] = node_id
+                cube_nodes = np.array(cube_nodes)
                 
-                # Fixed: bottom face (z=0), nodes 0,1,2,3
-                # Loaded: top face (z=1), nodes 4,5,6,7
-                fixed_nodes = np.array([0, 1, 2, 3])
-                loaded_nodes = np.array([4, 5, 6, 7])
+                # Generate 8 hex8 elements (same ordering as VTK)
+                cube_elements = []
+                for iz in range(2):
+                    for iy in range(2):
+                        for ix in range(2):
+                            n0 = node_map[(ix, iy, iz)]
+                            n1 = node_map[(ix+1, iy, iz)]
+                            n2 = node_map[(ix+1, iy+1, iz)]
+                            n3 = node_map[(ix, iy+1, iz)]
+                            n4 = node_map[(ix, iy, iz+1)]
+                            n5 = node_map[(ix+1, iy, iz+1)]
+                            n6 = node_map[(ix+1, iy+1, iz+1)]
+                            n7 = node_map[(ix, iy+1, iz+1)]
+                            cube_elements.append([n0, n1, n2, n3, n4, n5, n6, n7])
+                cube_elements = np.array(cube_elements)
+                print(f"  Generated {len(cube_nodes)} nodes, {len(cube_elements)} elements")
+                
+                # Fixed: bottom face (z=0), 9 nodes
+                fixed_nodes = np.array([node_map[(ix, iy, 0)] for iy in range(3) for ix in range(3)])
+                # Loaded: top face (z=2), 9 nodes
+                loaded_nodes = np.array([node_map[(ix, iy, 2)] for iy in range(3) for ix in range(3)])
                 
                 vtu_path = work_dir / "cube_mesh.vtu"
                 write_vtu_file(cube_nodes, cube_elements, str(vtu_path),
@@ -1508,7 +1523,7 @@ STRUCTURE GEOMETRY:
           MAT: 1
           KINEM: nonlinear
 
-# Bottom face fixed (z=0)
+# Bottom face fixed (z=0) - 9 nodes
 DESIGN POINT DIRICH CONDITIONS:
   - E: 1
     ENTITY_TYPE: node_set_id
@@ -1517,7 +1532,7 @@ DESIGN POINT DIRICH CONDITIONS:
     VAL: [0.0, 0.0, 0.0]
     FUNCT: [0, 0, 0]
 
-# Top face loaded (z=1) - apply small force in -z direction
+# Top face loaded (z=2) - apply small force in -z direction (9 nodes)
 DESIGN POINT NEUMANN CONDITIONS:
   - E: 2
     ENTITY_TYPE: node_set_id
