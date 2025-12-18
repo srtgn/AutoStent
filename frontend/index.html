@@ -1012,7 +1012,8 @@
                         return;
                     }
 
-                    // Simulated RL (original code)
+                    // Simulated RL (mockup mode - no backend)
+                    console.log('[Mockup] Starting local training simulation');
                     training.value = true;
                     progress.value = 0;
                     let currentStep = 0;
@@ -1054,26 +1055,28 @@
                         currentStep++;
                         progress.value = currentStep / totalSteps;
 
-                        rewardHistory.value.push(reward);
-                        stressHistory.value.push(metrics.value.stress);
-                        displacementHistory.value.push(metrics.value.displacement);
+                        // Force reactivity by re-assigning arrays (not just push)
+                        rewardHistory.value = [...rewardHistory.value, reward];
+                        stressHistory.value = [...stressHistory.value, metrics.value.stress];
+                        displacementHistory.value = [...displacementHistory.value, metrics.value.displacement];
                         // Store params for this step (for download modal)
-                        paramsHistory.value.push({
+                        paramsHistory.value = [...paramsHistory.value, {
                             diameter: params.value.diameter,
                             length: params.value.length,
                             strut_thickness: params.value.strutThickness,
                             num_struts: params.value.numStruts,
                             crown_height: params.value.crownHeight
-                        });
+                        }];
 
                         if (episodeLength >= 50) {
-                            episodeRewards.value.push(episodeReward);
+                            episodeRewards.value = [...episodeRewards.value, episodeReward];
                             episodes.value++;
                             episodeReward = 0;
                             episodeLength = 0;
                         }
 
-                        if (currentStep % 5 === 0) {
+                        // Update charts more frequently in mockup mode (every 2 steps)
+                        if (currentStep % 2 === 0) {
                             updateStent3D();
                             updateCharts();
                         }
@@ -1439,6 +1442,11 @@
                     // This ensures steps counter, progress bar, and curve x-axis all match
                     const rewardDataLength = rewardHistory.value.length;
                     const totalStepsNow = rewardDataLength || steps.value || 0;
+                    
+                    // Debug logging for mockup mode
+                    if (totalStepsNow > 0 && totalStepsNow % 10 === 0) {
+                        console.log(`[Charts] Data points: ${totalStepsNow}, Last reward: ${rewardHistory.value[rewardHistory.value.length-1]?.toFixed(3)}`);
+                    }
                     
                     // For empty charts, show axis range based on trainSteps
                     const xAxisMax = totalStepsNow > 0 ? totalStepsNow + 10 : trainSteps.value;
