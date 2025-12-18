@@ -735,7 +735,8 @@ MATERIALS:
         
         if use_vtu:
             # When using VTU, point_sets are embedded in the file
-            # Use DESIGN POINT conditions (references point_set_1 and point_set_2)
+            # Use DESIGN POINT conditions with ENTITY_TYPE: node_set_id
+            # References point_set_1 (E:1) and point_set_2 (E:2)
             f.write(f"""
 # Boundary conditions using point_set arrays from VTU file
 # point_set_1: {len(fixed_nodes)} fixed nodes at z=0
@@ -743,6 +744,7 @@ MATERIALS:
 
 DESIGN POINT DIRICH CONDITIONS:
   - E: 1
+    ENTITY_TYPE: node_set_id
     NUMDOF: 3
     ONOFF: [1, 1, 1]
     VAL: [0.0, 0.0, 0.0]
@@ -750,6 +752,7 @@ DESIGN POINT DIRICH CONDITIONS:
 
 DESIGN POINT NEUMANN CONDITIONS:
   - E: 2
+    ENTITY_TYPE: node_set_id
     NUMDOF: 3
     ONOFF: [1, 1, 0]
     VAL: [{pressure}, {pressure}, 0.0]
@@ -1503,9 +1506,11 @@ STRUCTURE GEOMETRY:
           MAT: 1
           KINEM: nonlinear
 
-# Boundary conditions using point_set arrays from VTU
+# Boundary conditions using point_set arrays from VTU file
+# point_set_1 = fixed nodes, point_set_2 = loaded nodes
 DESIGN POINT DIRICH CONDITIONS:
   - E: 1
+    ENTITY_TYPE: node_set_id
     NUMDOF: 3
     ONOFF: [1, 1, 1]
     VAL: [0.0, 0.0, 0.0]
@@ -1513,6 +1518,7 @@ DESIGN POINT DIRICH CONDITIONS:
 
 DESIGN POINT NEUMANN CONDITIONS:
   - E: 2
+    ENTITY_TYPE: node_set_id
     NUMDOF: 3
     ONOFF: [1, 1, 0]
     VAL: [{pressure}, {pressure}, 0.0]
