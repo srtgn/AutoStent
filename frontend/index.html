@@ -264,6 +264,12 @@
         <!-- Bottom Row: Training (full width) -->
         <div class="card p-4">
             <h2 class="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">RL Training</h2>
+            
+            <!-- Mockup mode notification -->
+            <div v-if="!useDocker && !useRealRL && !training" 
+                 class="bg-gray-50 border border-gray-200 rounded px-3 py-2 mb-3 text-xs text-gray-600">
+                <strong>Mockup mode:</strong> Fast local simulation. Enable <em>4C Solver</em> + <em>RL (PPO)</em> for physics-based FEM and downloadable YAML/VTU files.
+            </div>
 
             <!-- Controls & Stats in one row -->
             <div class="flex items-center gap-4 mb-4 pb-4 border-b border-gray-100 relative">
@@ -365,6 +371,9 @@
                         Reward Evolution
                         <span v-if="(useDocker || useRealRL) && rewardHistory.length > 0" class="text-gray-400 font-normal normal-case">
                             (click points to download)
+                        </span>
+                        <span v-else-if="!useDocker && !useRealRL && rewardHistory.length > 0" class="text-gray-400 font-normal normal-case italic">
+                            Enable 4C + RL for FEM simulation and file export
                         </span>
                     </div>
                     <div id="reward-chart" style="height: 200px;" :style="{ cursor: (useDocker || useRealRL) ? 'pointer' : 'default' }"></div>
@@ -515,6 +524,7 @@
                 const stressHistory = ref([]);
                 const displacementHistory = ref([]);
                 const rewardHistory = ref([]);
+                const paramsHistory = ref([]);  // Store params for each logged step
                 
                 // Computed: Use last reward from backend history if available, else 0
                 const displayedReward = computed(() => {
@@ -615,19 +625,24 @@
                     downloadModal.value.stress = stressHistory.value[idx] ?? 0;
                     downloadModal.value.displacement = displacementHistory.value[idx] ?? 0;
                     
-                    // Try to get params from backend (they store per-step params)
-                    downloadModal.value.params = {};
-                    try {
-                        const res = await fetch(`${backendUrl}/training-yaml-info/${step}`);
-                        const data = await res.json();
-                        if (data.data?.params) {
-                            downloadModal.value.params = data.data.params;
+                    // Use local params history first (most reliable)
+                    if (paramsHistory.value[idx]) {
+                        downloadModal.value.params = paramsHistory.value[idx];
+                    } else {
+                        // Fallback: try to get params from backend
+                        downloadModal.value.params = {};
+                        try {
+                            const res = await fetch(`${backendUrl}/training-yaml-info/${step}`);
+                            const data = await res.json();
+                            if (data.data?.params) {
+                                downloadModal.value.params = data.data.params;
+                            }
+                            // Also update metrics from backend if available
+                            if (data.data?.stress) downloadModal.value.stress = data.data.stress;
+                            if (data.data?.displacement) downloadModal.value.displacement = data.data.displacement;
+                        } catch (e) {
+                            console.error('Failed to fetch step info:', e);
                         }
-                        // Also update metrics from backend if available
-                        if (data.data?.stress) downloadModal.value.stress = data.data.stress;
-                        if (data.data?.displacement) downloadModal.value.displacement = data.data.displacement;
-                    } catch (e) {
-                        console.error('Failed to fetch step info:', e);
                     }
                 }
                 
@@ -813,8 +828,17 @@
                                 // Update histories from backend
                                 // Backend sends full arrays, so replace ours (backend clears on training start)
                                 if (data.rewards !== undefined) {
+                                    const prevLength = rewardHistory.value.length;
                                     // Always sync with backend - it's the source of truth
                                     rewardHistory.value = data.rewards;
+                                    
+                                    // Track params for each new data point (for download modal)
+                                    if (data.current_params && data.rewards.length > prevLength) {
+                                        // New data points added - store current params for each new point
+                                        while (paramsHistory.value.length < data.rewards.length) {
+                                            paramsHistory.value.push({...data.current_params});
+                                        }
+                                    }
                                     
                                     // Update currentReward to match the last reward from backend
                                     // This ensures dashboard and curve show the same value
@@ -973,6 +997,8 @@
                                 episodes.value = 0;
                                 rewardHistory.value = [];
                                 stressHistory.value = [];
+                                displacementHistory.value = [];
+                                paramsHistory.value = [];
                                 episodeRewards.value = [];
                                 // Force chart update to clear old data
                                 updateCharts();
@@ -1115,6 +1141,7 @@
                     stressHistory.value = [];
                     displacementHistory.value = [];
                     rewardHistory.value = [];
+                    paramsHistory.value = [];
                     episodes.value = 0;
                     steps.value = 0;
                     progress.value = 0;
