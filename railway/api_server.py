@@ -1424,7 +1424,7 @@ def test_4c_docker_direct():
     
     try:
         use_generated_stent = False
-        use_simple_cube = True  # Start with simple test
+        use_simple_cube = False  # Cube test passed! Now test stent mesh
         
         if use_simple_cube and MESH_TOOLS_AVAILABLE:
             # Create a simple single-element cube test first
@@ -1561,7 +1561,7 @@ DESIGN POINT NEUMANN CONDITIONS:
                     
                     # Create YAML referencing VTU with point_set boundary conditions
                     test_yaml = work_dir / "stent_test.4C.yaml"
-                    pressure = 1.0  # MPa radial pressure
+                    pressure = 0.001  # Small radial pressure for testing
                     test_yaml.write_text(f"""TITLE: Generated stent test
 PROBLEM TYPE:
   PROBLEMTYPE: Structure
