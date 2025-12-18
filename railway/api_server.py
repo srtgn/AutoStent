@@ -1553,16 +1553,16 @@ DESIGN POINT NEUMANN CONDITIONS:
             if MESH_TOOLS_AVAILABLE:
                 print("No tutorial file found - generating stent mesh...")
                 try:
-                    # Generate very coarse stent mesh for testing
+                    # Generate realistic stent mesh for testing
                     geometry = StentGeometry(
                         diameter=10.0,
-                        length=10.0,  # Shorter
-                        strut_thickness=1.0,  # Thicker for better elements
-                        num_struts=4,  # Minimal struts
+                        length=20.0,
+                        strut_thickness=0.12,
+                        num_struts=12,
                         crown_height=1.0
                     )
                     nodes, elements, fixed_nodes, loaded_nodes = generate_cylindrical_stent_mesh(
-                        geometry, n_circumferential_per_strut=1, n_radial=1  # Very coarse
+                        geometry, n_circumferential_per_strut=4, n_radial=2
                     )
                     
                     # Write VTU file with required 4C arrays (block_id, point_sets)
@@ -1576,7 +1576,7 @@ DESIGN POINT NEUMANN CONDITIONS:
                     
                     # Create YAML referencing VTU with point_set boundary conditions
                     test_yaml = work_dir / "stent_test.4C.yaml"
-                    pressure = 0.001  # Small radial pressure for testing
+                    pressure = 0.01  # Small axial load for testing
                     test_yaml.write_text(f"""TITLE: Generated stent test
 PROBLEM TYPE:
   PROBLEMTYPE: Structure
