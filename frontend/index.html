@@ -256,7 +256,7 @@
             <h2 class="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">RL Training</h2>
 
             <!-- Controls & Stats in one row -->
-            <div class="flex items-center gap-4 mb-4 pb-4 border-b border-gray-100">
+            <div class="flex items-center gap-4 mb-4 pb-4 border-b border-gray-100 relative">
                 <div class="flex items-center gap-2 bg-gray-50 rounded px-3 py-1">
                     <label class="text-xs text-gray-500">Steps</label>
                     <input type="number" v-model.number="trainSteps" min="50" max="10000" step="50" :disabled="training"
@@ -269,6 +269,13 @@
                     Stop
                 </button>
                 <button @click="resetEnv" :disabled="training" class="btn btn-secondary">Reset</button>
+                
+                <!-- Download 4C Files button (only when using 4C) -->
+                <button v-if="useDocker && generatedFiles.length > 0" 
+                        @click="showDownloads = !showDownloads" 
+                        class="btn btn-secondary text-xs">
+                    📥 Files ({{ generatedFiles.length }})
+                </button>
 
                 <!-- Checkbox consolidated to Header -->
 
@@ -285,6 +292,35 @@
 
                 <div class="flex-1"></div>
 
+                <!-- Download Panel (shown when showDownloads is true) -->
+                <div v-if="showDownloads" class="absolute right-0 top-full mt-2 bg-white rounded-lg shadow-xl border p-3 z-50 w-80 max-h-64 overflow-y-auto">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="font-semibold text-sm">Generated 4C Files</span>
+                        <button @click="showDownloads = false" class="text-gray-400 hover:text-gray-600">✕</button>
+                    </div>
+                    <div v-if="generatedFiles.length === 0" class="text-gray-500 text-xs">
+                        No files generated yet. Run training with 4C enabled.
+                    </div>
+                    <div v-for="file in generatedFiles" :key="file.id" class="border-b py-2 last:border-b-0">
+                        <div class="text-xs text-gray-600 mb-1">
+                            D={{ file.params?.diameter?.toFixed(1) }}mm, 
+                            L={{ file.params?.length?.toFixed(1) }}mm,
+                            t={{ file.params?.strut_thickness?.toFixed(2) }}mm
+                        </div>
+                        <div class="flex gap-2">
+                            <button v-if="file.has_yaml" @click="downloadYaml(file.id)" 
+                                    class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded">
+                                📄 YAML
+                            </button>
+                            <button v-if="file.has_vtu" @click="downloadVtu(file.id)"
+                                    class="text-xs bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded">
+                                🔷 VTU
+                            </button>
+                            <span class="text-xs text-gray-400 ml-auto">{{ formatTime(file.timestamp) }}</span>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Stats inline -->
                 <div class="flex gap-6 text-center">
                     <div>
@@ -475,6 +511,10 @@
                 const show4CViewer = ref(true);
                 const fourcStatus = ref('checking'); // 'checking', 'available', 'unavailable'
                 
+                // Generated files for download
+                const generatedFiles = ref([]);
+                const showDownloads = ref(false);
+                
                 // Check 4C availability on the server
                 async function check4CStatus() {
                     fourcStatus.value = 'checking';
@@ -506,6 +546,36 @@
                         console.error('Failed to check 4C status:', e);
                         fourcStatus.value = 'unavailable';
                     }
+                }
+                
+                // Fetch list of generated files for download
+                async function fetchGeneratedFiles() {
+                    try {
+                        const res = await fetch(`${backendUrl}/generated-files`);
+                        const data = await res.json();
+                        if (data.files) {
+                            generatedFiles.value = data.files;
+                        }
+                    } catch (e) {
+                        console.error('Failed to fetch generated files:', e);
+                    }
+                }
+                
+                // Download YAML file
+                function downloadYaml(simId) {
+                    window.open(`${backendUrl}/download-yaml/${simId}`, '_blank');
+                }
+                
+                // Download VTU file
+                function downloadVtu(simId) {
+                    window.open(`${backendUrl}/download-vtu/${simId}`, '_blank');
+                }
+                
+                // Format timestamp for display
+                function formatTime(timestamp) {
+                    if (!timestamp) return '';
+                    const date = new Date(timestamp * 1000);
+                    return date.toLocaleTimeString();
                 }
 
                 // Run simulation on Railway when Docker mode is enabled
@@ -618,6 +688,11 @@
                                         progress.value = newProgress;
                                     }
                                     // If progress went backward, keep previous (might be backend reset)
+                                }
+                                
+                                // Fetch generated files periodically when using 4C
+                                if (useDocker.value && steps.value % 10 === 0) {
+                                    fetchGeneratedFiles();
                                 }
 
                                 updateStent3D();
@@ -1278,6 +1353,9 @@
                     useRealRL, backendConnected,
                     // 4C Docker Mode
                     useDocker, dockerAvailable, show4CViewer, fourcStatus,
+                    // Generated files download
+                    generatedFiles, showDownloads,
+                    fetchGeneratedFiles, downloadYaml, downloadVtu, formatTime,
                     // Comparison
                     comparing, comparisonDone, comparisonEpisodes,
                     randomMean, trainedMean, improvement,

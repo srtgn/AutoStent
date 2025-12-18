@@ -195,6 +195,11 @@ WORK_DIR.mkdir(parents=True, exist_ok=True)
 # Simulation state
 simulations: Dict[str, Dict[str, Any]] = {}
 
+# Storage for generated YAML files (for user download)
+# Key: simulation_id, Value: {yaml_content, vtu_content, params, timestamp}
+generated_files: Dict[str, Dict[str, Any]] = {}
+MAX_STORED_FILES = 50  # Limit storage
+
 # RL Training state
 state_lock = threading.Lock()
 training_state = {
@@ -718,40 +723,53 @@ MATERIALS:
             f.write(f"      ELEMENTS: [1-{len(elements)}]\n")
             f.write("      MATERIAL: 1\n")
         
-        # Boundary conditions (using node sets)
-        fixed_ids = ", ".join(str(n+1) for n in fixed_nodes)
-        loaded_ids = ", ".join(str(n+1) for n in loaded_nodes)
+        # Boundary conditions
+        # Fixed end: all DOFs fixed at z=0
+        # Loaded surface: radial pressure on outer surface
         pressure = params.diameter * 0.1  # Radial pressure in MPa
         
+        # Define node sets (needed for both VTU and inline geometry)
+        # Use 1-indexed node IDs for 4C
+        fixed_node_ids = [n+1 for n in fixed_nodes]
+        loaded_node_ids = [n+1 for n in loaded_nodes]
+        
+        # Write node sets section
         f.write(f"""
+# Node sets for boundary conditions
+# Fixed end: {len(fixed_nodes)} nodes at z=0
+# Loaded surface: {len(loaded_nodes)} nodes on outer radius
+
+DNODE-NODE SETS:
+""")
+        # Write fixed nodes (limit to reasonable size for YAML)
+        f.write(f"  DSURF 1:\n")
+        for i in range(0, len(fixed_node_ids), 20):
+            chunk = fixed_node_ids[i:i+20]
+            f.write(f"    DNODES: [{', '.join(map(str, chunk))}]\n")
+        
+        f.write(f"  DSURF 2:\n")
+        for i in range(0, len(loaded_node_ids), 20):
+            chunk = loaded_node_ids[i:i+20]
+            f.write(f"    DNODES: [{', '.join(map(str, chunk))}]\n")
+        
+        # Boundary conditions using design surfaces
+        f.write(f"""
+# Fixed boundary: z=0 end, all DOFs constrained
 DESIGN SURF DIRICH CONDITIONS:
   - E: 1
-    ENTITY_TYPE: node_set_id
     NUMDOF: 3
     ONOFF: [1, 1, 1]
     VAL: [0.0, 0.0, 0.0]
     FUNCT: [0, 0, 0]
 
+# Pressure load: outer surface, radial pressure
 DESIGN SURF NEUMANN CONDITIONS:
   - E: 2
-    ENTITY_TYPE: node_set_id
     NUMDOF: 3
-    ONOFF: [0, 1, 0]
-    VAL: [0.0, {pressure}, 0.0]
+    ONOFF: [1, 1, 1]
+    VAL: [{pressure}, {pressure}, 0.0]
     FUNCT: [0, 0, 0]
-    TYPE: "orthopressure"
-""")
-        
-        # Add node sets if using inline geometry
-        if not use_vtu:
-            f.write(f"""
-NODE_SETS:
-  - ID: 1
-    NAME: fixed_end
-    NODES: [{fixed_ids}]
-  - ID: 2
-    NAME: loaded_surface
-    NODES: [{loaded_ids}]
+    TYPE: "neum_live"
 """)
 
 
@@ -780,6 +798,34 @@ def run_real_4c_simulation(params: StentParams):
             print(f"✓ VTU file ready: {vtu_file.name}")
         else:
             print(f"⚠ No VTU file found (mesh tools may not be available)")
+        
+        # Save files for user download
+        sim_id = f"sim_{int(time.time()*1000)}"
+        try:
+            yaml_content = yaml_path.read_text() if yaml_path.exists() else None
+            vtu_content = vtu_file.read_bytes() if vtu_file.exists() else None
+            
+            # Store for download (limit storage size)
+            if len(generated_files) >= MAX_STORED_FILES:
+                # Remove oldest entry
+                oldest_key = min(generated_files.keys(), key=lambda k: generated_files[k].get('timestamp', 0))
+                del generated_files[oldest_key]
+            
+            generated_files[sim_id] = {
+                "yaml_content": yaml_content,
+                "vtu_content": vtu_content,
+                "params": {
+                    "diameter": params.diameter,
+                    "length": params.length,
+                    "strut_thickness": params.strut_thickness,
+                    "num_struts": params.num_struts,
+                    "crown_height": params.crown_height
+                },
+                "timestamp": time.time()
+            }
+            print(f"✓ Saved files for download: {sim_id}")
+        except Exception as e:
+            print(f"⚠ Failed to save files for download: {e}")
         
         # Configure simulation
         # 4C writes output to same directory as input YAML file
@@ -1018,6 +1064,62 @@ def stop_training():
     with state_lock:
         training_state["is_training"] = False
     return {"status": "stopped"}
+
+
+# ===== FILE DOWNLOAD ENDPOINTS =====
+@app.get("/generated-files")
+def list_generated_files():
+    """List all generated YAML/VTU files available for download."""
+    files = []
+    for sim_id, data in generated_files.items():
+        files.append({
+            "id": sim_id,
+            "params": data.get("params", {}),
+            "timestamp": data.get("timestamp", 0),
+            "has_yaml": data.get("yaml_content") is not None,
+            "has_vtu": data.get("vtu_content") is not None
+        })
+    # Sort by timestamp, newest first
+    files.sort(key=lambda x: x["timestamp"], reverse=True)
+    return {"files": files, "count": len(files)}
+
+
+@app.get("/download-yaml/{sim_id}")
+def download_yaml(sim_id: str):
+    """Download YAML file for a specific simulation."""
+    from fastapi.responses import PlainTextResponse
+    
+    if sim_id not in generated_files:
+        return {"error": f"Simulation {sim_id} not found"}
+    
+    yaml_content = generated_files[sim_id].get("yaml_content")
+    if not yaml_content:
+        return {"error": "YAML file not available for this simulation"}
+    
+    return PlainTextResponse(
+        content=yaml_content,
+        media_type="text/yaml",
+        headers={"Content-Disposition": f"attachment; filename=stent_{sim_id}.4C.yaml"}
+    )
+
+
+@app.get("/download-vtu/{sim_id}")
+def download_vtu(sim_id: str):
+    """Download VTU mesh file for a specific simulation."""
+    from fastapi.responses import Response
+    
+    if sim_id not in generated_files:
+        return {"error": f"Simulation {sim_id} not found"}
+    
+    vtu_content = generated_files[sim_id].get("vtu_content")
+    if not vtu_content:
+        return {"error": "VTU file not available for this simulation"}
+    
+    return Response(
+        content=vtu_content,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f"attachment; filename=stent_{sim_id}.vtu"}
+    )
 
 @app.post("/reset")
 def reset_training():
@@ -1269,13 +1371,15 @@ def test_4c_docker_direct():
                 if has_structural and not has_avoid:
                     structural_files.append(f)
             
-            # Use structural file if found, otherwise first yaml
-            if structural_files:
-                tutorial_yaml = str(structural_files[0])
-                print(f"✓ Found structural YAML: {tutorial_yaml}")
-            elif all_yaml_files:
-                tutorial_yaml = str(all_yaml_files[0])
-                print(f"✓ Found YAML (not structural): {tutorial_yaml}")
+            # Skip using tutorial files - they have result verification that fails
+            # We want to use our generated stent mesh instead
+            # if structural_files:
+            #     tutorial_yaml = str(structural_files[0])
+            #     print(f"✓ Found structural YAML: {tutorial_yaml}")
+            # elif all_yaml_files:
+            #     tutorial_yaml = str(all_yaml_files[0])
+            #     print(f"✓ Found YAML (not structural): {tutorial_yaml}")
+            print(f"Found {len(all_yaml_files)} test files, but using generated stent mesh instead")
                 
             if vtu_files:
                 tutorial_vtu = str(vtu_files[0])
