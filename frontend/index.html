@@ -157,13 +157,8 @@
                     </label>
                     <span class="text-gray-400 cursor-help" title="Info">ⓘ</span>
                     <!-- Tooltip -->
-                    <div class="absolute top-full right-0 mt-2 w-72 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
-                        <div class="font-semibold mb-1 text-blue-400">🔬 Real 4C FEM Solver</div>
-                        <p class="mb-2">Uses the actual 4C finite element solver on cloud. Each step runs a real structural simulation.</p>
-                        <div class="border-t border-gray-700 pt-2 mt-2">
-                            <div class="text-green-400">✓ Checked: Accurate physics, downloadable YAML files, clickable chart points (~30-60s/step)</div>
-                            <div class="text-yellow-400 mt-1">✗ Unchecked: Fast mockup mode, instant results, no downloadable files</div>
-                        </div>
+                    <div class="absolute top-full right-0 mt-2 w-56 p-2 bg-gray-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
+                        <p>Runs 4C FEM on cloud server. Slower but physics-accurate. Enables YAML downloads.</p>
                     </div>
                 </div>
 
@@ -176,13 +171,8 @@
                     </label>
                     <span class="text-gray-400 cursor-help" title="Info">ⓘ</span>
                     <!-- Tooltip -->
-                    <div class="absolute top-full right-0 mt-2 w-72 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
-                        <div class="font-semibold mb-1 text-green-400">🤖 Real RL Training (PPO)</div>
-                        <p class="mb-2">Uses Stable Baselines3 PPO algorithm on backend server for real reinforcement learning.</p>
-                        <div class="border-t border-gray-700 pt-2 mt-2">
-                            <div class="text-green-400">✓ Checked: Real neural network training, learns optimal stent design</div>
-                            <div class="text-yellow-400 mt-1">✗ Unchecked: Simulated RL with random search heuristics (faster demo)</div>
-                        </div>
+                    <div class="absolute top-full right-0 mt-2 w-56 p-2 bg-gray-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
+                        <p>PPO neural network training on backend. Uses Stable Baselines3.</p>
                     </div>
                 </div>
             </div>
@@ -1412,6 +1402,9 @@
                     const rewardDataLength = rewardHistory.value.length;
                     const totalStepsNow = rewardDataLength || steps.value || 0;
                     
+                    // For empty charts, show axis range based on trainSteps
+                    const xAxisMax = totalStepsNow > 0 ? totalStepsNow + 10 : trainSteps.value;
+                    
                     // No padding needed - use actual data length
                     let paddedRewards = [...rewardHistory.value];
                     
@@ -1452,14 +1445,17 @@
                         });
                     }
 
+                    const rewardYAxis = { title: 'Reward', gridcolor: '#f0f0f0' };
+                    if (totalStepsNow === 0) rewardYAxis.range = [-1, 0.5];
+                    
                     Plotly.react('reward-chart', traces, {
                         margin: { l: 50, r: 10, t: 10, b: 35 },
                         xaxis: { 
                             title: is4CEnabled ? 'Step (click point to download YAML)' : 'Step', 
                             gridcolor: '#f0f0f0', 
-                            range: [0, totalStepsNow + 10] 
+                            range: [0, xAxisMax] 
                         },
-                        yaxis: { title: 'Reward', gridcolor: '#f0f0f0' },
+                        yaxis: rewardYAxis,
                         paper_bgcolor: 'white', plot_bgcolor: 'white',
                         showlegend: false,
                         hovermode: is4CEnabled ? 'closest' : 'x unified'
@@ -1496,20 +1492,23 @@
                         paddedStress = paddedStress.slice(0, totalStepsNow);
                     }
                     
+                    const stressYAxis = { title: 'MPa', gridcolor: '#f0f0f0' };
+                    if (totalStepsNow === 0) stressYAxis.range = [0, 200];
+                    
                     Plotly.react('stress-chart', [{
                         x: Array.from({ length: totalStepsNow }, (_, i) => i + 1),
                         y: paddedStress,
                         type: 'scatter', mode: 'lines',
                         line: { color: '#dc2626', width: 1.5 }
                     }, {
-                        x: [0, totalStepsNow + 10],
+                        x: [0, xAxisMax],
                         y: [150, 150],
                         type: 'scatter', mode: 'lines',
                         line: { color: '#9ca3af', width: 1, dash: 'dot' }
                     }], {
                         margin: { l: 50, r: 10, t: 10, b: 35 },
-                        xaxis: { title: 'Step', gridcolor: '#f0f0f0', range: [0, totalStepsNow + 10] },
-                        yaxis: { title: 'MPa', gridcolor: '#f0f0f0' },
+                        xaxis: { title: 'Step', gridcolor: '#f0f0f0', range: [0, xAxisMax] },
+                        yaxis: stressYAxis,
                         paper_bgcolor: 'white', plot_bgcolor: 'white',
                         showlegend: false
                     }, { responsive: true });
