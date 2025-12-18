@@ -369,6 +369,7 @@ def check_4c_status():
 
 # ===== HELPER FUNCTIONS =====
 # Import mesh generation and VTU parsing
+MESH_IMPORT_ERROR = None
 try:
     from mesh_generator import (
         StentGeometry,
@@ -377,9 +378,46 @@ try:
     )
     from vtu_parser import parse_vtu_file, find_latest_vtu
     MESH_TOOLS_AVAILABLE = True
+    print("✓ Mesh tools imported successfully")
 except ImportError as e:
+    MESH_IMPORT_ERROR = str(e)
     print(f"WARNING: Mesh tools not available: {e}")
     MESH_TOOLS_AVAILABLE = False
+
+@app.get("/check-mesh-tools")
+def check_mesh_tools():
+    """Diagnostic endpoint to check mesh generation capabilities."""
+    result = {
+        "mesh_tools_available": MESH_TOOLS_AVAILABLE,
+        "import_error": MESH_IMPORT_ERROR
+    }
+    
+    # Try importing individually to identify specific failure
+    errors = []
+    try:
+        import numpy as np
+        result["numpy_available"] = True
+    except ImportError as e:
+        result["numpy_available"] = False
+        errors.append(f"numpy: {e}")
+    
+    try:
+        import pyvista as pv
+        result["pyvista_available"] = True
+        result["pyvista_version"] = pv.__version__
+    except ImportError as e:
+        result["pyvista_available"] = False
+        errors.append(f"pyvista: {e}")
+    
+    # Check if files exist
+    import os
+    result["mesh_generator_exists"] = os.path.exists("mesh_generator.py")
+    result["vtu_parser_exists"] = os.path.exists("vtu_parser.py")
+    result["working_dir"] = os.getcwd()
+    result["files_in_dir"] = os.listdir(".")[:20]  # First 20 files
+    result["errors"] = errors
+    
+    return result
 
 
 def generate_4c_yaml(params: StentParams, output_path: Path):
