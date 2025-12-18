@@ -14,6 +14,7 @@ from typing import Optional, Dict, Any, List
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 import uvicorn
 import numpy as np
@@ -678,7 +679,6 @@ def list_training_files():
 @app.get("/training-yaml/{step}")
 def download_training_yaml(step: int):
     """Download YAML file for a specific training step."""
-    from fastapi.responses import Response
     with state_lock:
         if step not in training_state.get("yaml_files", {}):
             raise HTTPException(status_code=404, detail=f"Step {step} not found")
@@ -691,7 +691,6 @@ def download_training_yaml(step: int):
 @app.get("/training-vtu/{step}")
 def download_training_vtu(step: int):
     """Download VTU file for a specific training step."""
-    from fastapi.responses import Response
     with state_lock:
         if step not in training_state.get("yaml_files", {}):
             raise HTTPException(status_code=404, detail=f"Step {step} not found")
