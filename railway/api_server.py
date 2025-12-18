@@ -1048,6 +1048,173 @@ def test_4c_simulation(request: SimulationRequest):
         "recommendation": "Check the 'test_result' field for simulation details"
     }
 
+@app.get("/check-mesh-tools")
+def check_mesh_tools():
+    """Check if mesh generation tools are available."""
+    result = {
+        "mesh_tools_available": MESH_TOOLS_AVAILABLE,
+        "pyvista_available": PV_AVAILABLE if 'PV_AVAILABLE' in dir() else False,
+    }
+    
+    # Try to generate a simple mesh
+    if MESH_TOOLS_AVAILABLE:
+        try:
+            geometry = StentGeometry(
+                diameter=10.0,
+                length=20.0,
+                strut_thickness=0.12,
+                num_struts=12,
+                crown_height=1.0
+            )
+            nodes, elements, fixed, loaded = generate_cylindrical_stent_mesh(geometry)
+            result["mesh_generation"] = {
+                "success": True,
+                "num_nodes": len(nodes),
+                "num_elements": len(elements),
+                "num_fixed_nodes": len(fixed),
+                "num_loaded_nodes": len(loaded)
+            }
+            
+            # Try to write VTU
+            if PV_AVAILABLE:
+                import tempfile
+                temp_vtu = Path(tempfile.mktemp(suffix=".vtu"))
+                try:
+                    write_vtu_file(nodes, elements, str(temp_vtu))
+                    result["vtu_generation"] = {
+                        "success": True,
+                        "file_size": temp_vtu.stat().st_size
+                    }
+                    temp_vtu.unlink()
+                except Exception as e:
+                    result["vtu_generation"] = {"success": False, "error": str(e)}
+            else:
+                result["vtu_generation"] = {"success": False, "error": "PyVista not available"}
+        except Exception as e:
+            result["mesh_generation"] = {"success": False, "error": str(e)}
+    else:
+        result["mesh_generation"] = {"success": False, "error": "Mesh tools not imported"}
+    
+    return result
+
+
+@app.get("/generate-stent-yaml")
+def generate_stent_yaml(
+    diameter: float = 10.0,
+    length: float = 20.0,
+    strut_thickness: float = 0.12,
+    num_struts: int = 12,
+    crown_height: float = 1.0
+):
+    """Generate a complete 4C YAML file with stent geometry."""
+    if not MESH_TOOLS_AVAILABLE:
+        return {
+            "success": False,
+            "error": "Mesh tools not available",
+            "yaml": None
+        }
+    
+    try:
+        # Generate mesh
+        geometry = StentGeometry(
+            diameter=diameter,
+            length=length,
+            strut_thickness=strut_thickness,
+            num_struts=num_struts,
+            crown_height=crown_height
+        )
+        nodes, elements, fixed_nodes, loaded_nodes = generate_cylindrical_stent_mesh(geometry)
+        
+        # Generate YAML content with inline geometry (for display)
+        yaml_content = f"""TITLE: Stent simulation - diameter={diameter}mm, length={length}mm
+PROBLEM TYPE:
+  PROBLEMTYPE: Structure
+
+SOLVER 1:
+  SOLVER: "Superlu"
+  NAME: "Structure_Solver"
+
+IO:
+  OUTPUT_SPRING: true
+  STRUCT_STRESS: "Cauchy"
+  STRUCT_STRAIN: "GL"
+  VERBOSITY: "Standard"
+  WRITE_INITIAL_STATE: false
+
+IO/RUNTIME VTK OUTPUT:
+  INTERVAL_STEPS: 1
+  OUTPUT_DATA_FORMAT: binary
+
+IO/RUNTIME VTK OUTPUT/STRUCTURE:
+  OUTPUT_STRUCTURE: true
+  DISPLACEMENT: true
+  STRESS_STRAIN: true
+  GAUSS_POINT_DATA_OUTPUT_TYPE: nodes
+
+STRUCTURAL DYNAMIC:
+  INT_STRATEGY: "Standard"
+  DYNAMICTYPE: "Statics"
+  TIMESTEP: 1.0
+  NUMSTEP: 1
+  MAXTIME: 1.0
+  TOLDISP: 1e-06
+  TOLRES: 1e-06
+  LOADLIN: true
+  LINEAR_SOLVER: 1
+
+MATERIALS:
+  - MAT: 1
+    MAT_Struct_PlasticNlnLogNeoHooke:
+      YOUNG: 200000.0
+      NUE: 0.3
+      DENS: 7.8e-9
+      YIELD: 500.0
+      SATHARDENING: 1000.0
+      HARDEXPO: 5.0
+      VISC: 0.0
+
+# Mesh: {len(nodes)} nodes, {len(elements)} hex8 elements
+# Fixed nodes: {len(fixed_nodes)} (z=0 end)
+# Loaded nodes: {len(loaded_nodes)} (outer surface)
+
+DNODE-NODE TOPOLOGY:
+"""
+        # Add nodes
+        for i, node in enumerate(nodes):
+            yaml_content += f"  NODE {i+1} COORD {node[0]:.6f} {node[1]:.6f} {node[2]:.6f}\n"
+        
+        yaml_content += "\nDELEMENT TOPOLOGY:\n"
+        # Add elements
+        for i, elem in enumerate(elements):
+            node_ids = " ".join(str(n+1) for n in elem)
+            yaml_content += f"  {i+1} SOLIDH8 HEX8 {node_ids} MAT 1 KINEM nonlinear\n"
+        
+        # Add node sets for boundary conditions
+        yaml_content += f"\n# Fixed end (z=0): {len(fixed_nodes)} nodes\n"
+        yaml_content += "DNODE-NODE SETS:\n"
+        yaml_content += f"  DSURF 1 DNODES {' '.join(str(n+1) for n in fixed_nodes[:20])}...\n"
+        
+        return {
+            "success": True,
+            "mesh_info": {
+                "num_nodes": len(nodes),
+                "num_elements": len(elements),
+                "num_fixed_nodes": len(fixed_nodes),
+                "num_loaded_nodes": len(loaded_nodes)
+            },
+            "yaml_preview": yaml_content[:3000] + "\n... (truncated)",
+            "note": "Full YAML with geometry is used internally for 4C simulations"
+        }
+        
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
 @app.get("/test-4c-docker")
 def test_4c_docker_direct():
     """Test 4C binary directly (we're already in 4C Docker image, so no need for docker run)."""
@@ -1060,21 +1227,36 @@ def test_4c_docker_direct():
     # Check if fourc binary exists
     fourc_bin = shutil.which("fourc") or "/usr/local/bin/fourc" or "/home/user/4C/build/4C"
     
-    # Try to find tutorial file in the image
-    tutorial_paths = [
-        "/home/user/4C/tests/input_files/tutorial_solid_vtu.4C.yaml",
-        "/home/user/4C/tests/input_files/tutorial_solid_vtu.vtu",
+    # Try to find tutorial files in the image (various locations)
+    tutorial_search_dirs = [
+        "/home/user/4C/tests/input_files",
+        "/home/user/4C/tests",
+        "/home/user/tests/input_files",
     ]
     
     tutorial_yaml = None
     tutorial_vtu = None
-    for path in tutorial_paths:
-        if Path(path).exists():
-            if path.endswith(".yaml"):
-                tutorial_yaml = path
-            elif path.endswith(".vtu"):
-                tutorial_vtu = path
-            print(f"✓ Found: {path}")
+    found_files = []
+    
+    for search_dir in tutorial_search_dirs:
+        search_path = Path(search_dir)
+        if search_path.exists():
+            # Collect files for diagnostics
+            found_files.extend([str(f) for f in search_path.iterdir() if f.is_file()][:5])
+            
+            # Look for any YAML file with geometry
+            yaml_files = list(search_path.glob("*.4C.yaml")) + list(search_path.glob("*.yaml"))
+            vtu_files = list(search_path.glob("*.vtu"))
+            
+            if yaml_files:
+                tutorial_yaml = str(yaml_files[0])
+                print(f"✓ Found YAML: {tutorial_yaml}")
+            if vtu_files:
+                tutorial_vtu = str(vtu_files[0])
+                print(f"✓ Found VTU: {tutorial_vtu}")
+            
+            if tutorial_yaml:
+                break
     
     # Create temp directory for output
     work_dir = Path(tempfile.mkdtemp(prefix="4c_test_"))
@@ -1160,7 +1342,9 @@ MATERIALS:
             "command": " ".join(cmd),
             "fourc_binary": fourc_bin,
             "binary_exists": Path(fourc_bin).exists(),
-            "yaml_exists": Path(tutorial_yaml).exists() if tutorial_yaml else False
+            "yaml_exists": Path(tutorial_yaml).exists() if tutorial_yaml else False,
+            "found_test_files": found_files[:10] if found_files else [],
+            "mesh_tools_available": MESH_TOOLS_AVAILABLE
         }
     except subprocess.TimeoutExpired:
         return {
