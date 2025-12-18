@@ -1249,15 +1249,34 @@ def test_4c_docker_direct():
         search_path = Path(search_dir)
         if search_path.exists():
             # Collect files for diagnostics
-            found_files.extend([str(f) for f in search_path.iterdir() if f.is_file()][:5])
+            found_files.extend([str(f) for f in search_path.iterdir() if f.is_file()][:10])
             
-            # Look for any YAML file with geometry
-            yaml_files = list(search_path.glob("*.4C.yaml")) + list(search_path.glob("*.yaml"))
+            # Look for YAML files - prefer structural mechanics files
+            all_yaml_files = list(search_path.glob("*.4C.yaml")) + list(search_path.glob("*.yaml"))
             vtu_files = list(search_path.glob("*.vtu"))
             
-            if yaml_files:
-                tutorial_yaml = str(yaml_files[0])
-                print(f"✓ Found YAML: {tutorial_yaml}")
+            # Filter for structural mechanics files (solid, struct, tutorial_solid)
+            # Avoid fluid, elch, fsi, etc.
+            structural_keywords = ['solid', 'struct', 'plastic', 'beam', 'shell', 'truss']
+            avoid_keywords = ['elch', 'fluid', 'fsi', 'scatra', 'thermo', 'ale', 'moving']
+            
+            structural_files = []
+            for f in all_yaml_files:
+                fname = f.name.lower()
+                # Check if it contains structural keywords and doesn't contain avoid keywords
+                has_structural = any(kw in fname for kw in structural_keywords)
+                has_avoid = any(kw in fname for kw in avoid_keywords)
+                if has_structural and not has_avoid:
+                    structural_files.append(f)
+            
+            # Use structural file if found, otherwise first yaml
+            if structural_files:
+                tutorial_yaml = str(structural_files[0])
+                print(f"✓ Found structural YAML: {tutorial_yaml}")
+            elif all_yaml_files:
+                tutorial_yaml = str(all_yaml_files[0])
+                print(f"✓ Found YAML (not structural): {tutorial_yaml}")
+                
             if vtu_files:
                 tutorial_vtu = str(vtu_files[0])
                 print(f"✓ Found VTU: {tutorial_vtu}")
@@ -1280,10 +1299,88 @@ def test_4c_docker_direct():
         shutil.copy(tutorial_vtu, work_dir / vtu_name)
     
     try:
+        use_generated_stent = False
+        
         if not tutorial_yaml or not Path(fourc_bin).exists():
-            # Fallback: create a minimal test YAML
-            test_yaml = work_dir / "test.4C.yaml"
-            test_yaml.write_text("""TITLE: Minimal test
+            # Try to generate our own stent mesh with 4C-compliant YAML
+            if MESH_TOOLS_AVAILABLE:
+                print("No tutorial file found - generating stent mesh...")
+                try:
+                    # Generate small stent mesh
+                    geometry = StentGeometry(
+                        diameter=10.0,
+                        length=20.0,
+                        strut_thickness=0.12,
+                        num_struts=8,  # Fewer struts for faster test
+                        crown_height=1.0
+                    )
+                    nodes, elements, fixed_nodes, loaded_nodes = generate_cylindrical_stent_mesh(
+                        geometry, n_circumferential_per_strut=2, n_radial=1  # Coarse mesh
+                    )
+                    
+                    # Write VTU file
+                    vtu_path = work_dir / "stent_mesh.vtu"
+                    write_vtu_file(nodes, elements, str(vtu_path))
+                    print(f"✓ Generated VTU: {len(nodes)} nodes, {len(elements)} elements")
+                    
+                    # Create YAML referencing VTU
+                    test_yaml = work_dir / "stent_test.4C.yaml"
+                    test_yaml.write_text(f"""TITLE: Generated stent test
+PROBLEM TYPE:
+  PROBLEMTYPE: Structure
+
+SOLVER 1:
+  SOLVER: "Superlu"
+  NAME: "Structure_Solver"
+
+IO:
+  STRUCT_STRESS: "Cauchy"
+  VERBOSITY: "Standard"
+
+IO/RUNTIME VTK OUTPUT:
+  INTERVAL_STEPS: 1
+  OUTPUT_DATA_FORMAT: binary
+
+STRUCTURAL DYNAMIC:
+  INT_STRATEGY: "Standard"
+  DYNAMICTYPE: "Statics"
+  TIMESTEP: 1.0
+  NUMSTEP: 1
+  MAXTIME: 1.0
+  LINEAR_SOLVER: 1
+  TOLDISP: 1e-06
+  TOLRES: 1e-06
+
+MATERIALS:
+  - MAT: 1
+    MAT_Struct_PlasticNlnLogNeoHooke:
+      YOUNG: 200000.0
+      NUE: 0.3
+      DENS: 7.8e-9
+      YIELD: 500.0
+      SATHARDENING: 1000.0
+      HARDEXPO: 5.0
+      VISC: 0.0
+
+STRUCTURE GEOMETRY:
+  FILE: stent_mesh.vtu
+  ELEMENT_BLOCKS:
+    - ID: 1
+      SOLID:
+        HEX8:
+          MAT: 1
+          KINEM: nonlinear
+""")
+                    tutorial_yaml = test_yaml
+                    use_generated_stent = True
+                    print("Created stent test YAML with VTU geometry")
+                except Exception as e:
+                    print(f"Failed to generate stent mesh: {e}")
+            
+            if not use_generated_stent:
+                # Fallback: create a minimal test YAML (will fail without geometry)
+                test_yaml = work_dir / "test.4C.yaml"
+                test_yaml.write_text("""TITLE: Minimal test (no geometry - will fail)
 PROBLEM TYPE:
   PROBLEMTYPE: Structure
 
@@ -1310,8 +1407,8 @@ MATERIALS:
       HARDEXPO: 5.0
       VISC: 0.0
 """)
-            tutorial_yaml = test_yaml
-            print("Created minimal test YAML")
+                tutorial_yaml = test_yaml
+                print("Created minimal test YAML (no geometry)")
         
         # Run 4C binary directly (we're already in the image!)
         # 4C command format: 4C input.yaml output_name (no -o flag)
@@ -1352,7 +1449,8 @@ MATERIALS:
             "binary_exists": Path(fourc_bin).exists(),
             "yaml_exists": Path(tutorial_yaml).exists() if tutorial_yaml else False,
             "found_test_files": found_files[:10] if found_files else [],
-            "mesh_tools_available": MESH_TOOLS_AVAILABLE
+            "mesh_tools_available": MESH_TOOLS_AVAILABLE,
+            "used_generated_stent": use_generated_stent if 'use_generated_stent' in dir() else False
         }
     except subprocess.TimeoutExpired:
         return {
