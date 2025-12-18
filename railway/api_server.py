@@ -596,15 +596,16 @@ STRUCTURAL DYNAMIC:
 MATERIALS:
   - MAT: 1
     MAT_ElastHyper:
-      NUMMAT: 1
-      MATIDS: [100]
+      NUMMAT: 2
+      MATIDS: [2, 3]
       DENS: 7.8e-9
-  - MAT: 100
+  - MAT: 2
     ELAST_IsoNeoHooke:
       MUE:
-        constant: 76923.08
-      KAPPA:
-        constant: 166666.67
+        constant: 76923.0
+  - MAT: 3
+    ELAST_VolSussmanBathe:
+      KAPPA: 166667.0
 
 # NOTE: This YAML is incomplete - 4C requires geometry/mesh
 # Without mesh tools, 4C cannot run. Using analytical fallback in code.
@@ -688,15 +689,16 @@ STRUCTURAL DYNAMIC:
 MATERIALS:
   - MAT: 1
     MAT_ElastHyper:
-      NUMMAT: 1
-      MATIDS: [100]
+      NUMMAT: 2
+      MATIDS: [2, 3]
       DENS: 7.8e-9
-  - MAT: 100
+  - MAT: 2
     ELAST_IsoNeoHooke:
       MUE:
-        constant: 76923.08
-      KAPPA:
-        constant: 166666.67
+        constant: 76923.0
+  - MAT: 3
+    ELAST_VolSussmanBathe:
+      KAPPA: 166667.0
 
 """)
         
@@ -1298,15 +1300,16 @@ STRUCTURAL DYNAMIC:
 MATERIALS:
   - MAT: 1
     MAT_ElastHyper:
-      NUMMAT: 1
-      MATIDS: [100]
+      NUMMAT: 2
+      MATIDS: [2, 3]
       DENS: 7.8e-9
-  - MAT: 100
+  - MAT: 2
     ELAST_IsoNeoHooke:
       MUE:
-        constant: 76923.08
-      KAPPA:
-        constant: 166666.67
+        constant: 76923.0
+  - MAT: 3
+    ELAST_VolSussmanBathe:
+      KAPPA: 166667.0
 
 # Mesh: {len(nodes)} nodes, {len(elements)} hex8 elements
 # Fixed nodes: {len(fixed_nodes)} (z=0 end)
@@ -1495,15 +1498,16 @@ STRUCTURAL DYNAMIC:
 MATERIALS:
   - MAT: 1
     MAT_ElastHyper:
-      NUMMAT: 1
-      MATIDS: [100]
+      NUMMAT: 2
+      MATIDS: [2, 3]
       DENS: 7.8e-9
-  - MAT: 100
+  - MAT: 2
     ELAST_IsoNeoHooke:
       MUE:
-        constant: 76923.08
-      KAPPA:
-        constant: 166666.67
+        constant: 76923.0
+  - MAT: 3
+    ELAST_VolSussmanBathe:
+      KAPPA: 166667.0
 
 STRUCTURE GEOMETRY:
   FILE: stent_mesh.vtu
@@ -1560,15 +1564,16 @@ STRUCTURAL DYNAMIC:
 MATERIALS:
   - MAT: 1
     MAT_ElastHyper:
-      NUMMAT: 1
-      MATIDS: [100]
+      NUMMAT: 2
+      MATIDS: [2, 3]
       DENS: 7.8e-9
-  - MAT: 100
+  - MAT: 2
     ELAST_IsoNeoHooke:
       MUE:
-        constant: 76923.08
-      KAPPA:
-        constant: 166666.67
+        constant: 76923.0
+  - MAT: 3
+    ELAST_VolSussmanBathe:
+      KAPPA: 166667.0
 """)
                 tutorial_yaml = test_yaml
                 print("Created minimal test YAML (no geometry)")
