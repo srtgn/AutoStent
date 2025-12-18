@@ -1051,9 +1051,16 @@ def test_4c_simulation(request: SimulationRequest):
 @app.get("/check-mesh-tools")
 def check_mesh_tools():
     """Check if mesh generation tools are available."""
+    # Check pyvista availability directly
+    try:
+        import pyvista as pv
+        pv_available = True
+    except ImportError:
+        pv_available = False
+    
     result = {
         "mesh_tools_available": MESH_TOOLS_AVAILABLE,
-        "pyvista_available": PV_AVAILABLE if 'PV_AVAILABLE' in dir() else False,
+        "pyvista_available": pv_available,
     }
     
     # Try to generate a simple mesh
@@ -1269,7 +1276,8 @@ def test_4c_docker_direct():
         shutil.copy(tutorial_yaml, work_dir / "input.4C.yaml")
         tutorial_yaml = work_dir / "input.4C.yaml"
     if tutorial_vtu:
-        shutil.copy(tutorial_vtu, work_dir / tutorial_vtu.name)
+        vtu_name = Path(tutorial_vtu).name
+        shutil.copy(tutorial_vtu, work_dir / vtu_name)
     
     try:
         if not tutorial_yaml or not Path(fourc_bin).exists():
