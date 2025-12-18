@@ -102,7 +102,9 @@ training_state = {
     "best_reward": -100.0,
     "rewards": [],
     "stress_history": [],
+    "displacement_history": [],
     "episode_rewards": [],
+    "yaml_files": {},  # Store YAML and VTU content by step number
 }
 
 # ===== STENT ENVIRONMENT FOR RL =====
@@ -161,30 +163,36 @@ if SB3_AVAILABLE:
                     if result.get("success"):
                         stress = result.get("max_von_mises_stress", 100.0)
                         displacement = result.get("max_displacement", 0.0)
+                        print(f"Step {self.step_count}: 4C SUCCESS in {time.time()-start_time:.2f}s. Stress={stress:.2f} MPa, Disp={displacement:.3f} mm")
                     else:
                         # Simulation failed
-                        print(f"Env 4C Failed: {result.get('error')}")
+                        error_msg = result.get('error', 'unknown error')
+                        print(f"Step {self.step_count}: 4C FAILED: {error_msg}")
                         stress = 1000.0 # High penalty
                         displacement = 10.0
-                        stress = 1000.0 # High penalty
-                        displacement = 10.0
-                    print(f"Step {self.step_count}: 4C Finished in {time.time()-start_time:.2f}s. Result: {stress:.2f} MPa")
                 except Exception as e:
-                    print(f"Env Exception: {e}")
+                    print(f"Step {self.step_count}: Exception during 4C: {e}")
+                    import traceback
+                    traceback.print_exc()
                     stress = 1000.0
+                    displacement = 10.0
             else:
                 # Fast Mockup Calculation
                 d, t, n = self.params['diameter'], self.params['strut_thickness'], self.params['num_struts']
                 stress = 100 * (0.12 / max(t, 0.05))**1.5 * (10.0 / max(d, 5))**0.5 * (12 / max(n, 6))**0.8
                 displacement = 0.3 * (self.params['length'] / 20) * (0.12 / max(t, 0.05))
 
+            # Store for callback access
+            self.last_stress = stress
+            self.last_displacement = displacement
+            
             # Reward calculation
             reward = -0.4 * (stress / 200) - 0.2 * displacement
             
             self.step_count += 1
             done = self.step_count >= self.max_episode_steps
             
-            return self._get_obs(), reward, done, False, {'parameters': self.params.copy(), 'stress': stress}
+            return self._get_obs(), reward, done, False, {'parameters': self.params.copy(), 'stress': stress, 'displacement': displacement}
 
     class TrainingCallback(BaseCallback):
         def __init__(self, total_steps):
@@ -207,14 +215,17 @@ if SB3_AVAILABLE:
                         env = self.model.env.envs[0].unwrapped
                         if hasattr(env, 'params'):
                             training_state["current_params"] = dict(env.params)
-                            # Get real stress if available, else formula
+                            # Get real stress and displacement if available
                             if hasattr(env, 'last_stress'): 
                                 stress = env.last_stress
+                                displacement = getattr(env, 'last_displacement', 0.0)
                             else:
-                                # Use same stress formula as in step()
+                                # Use same formula as in step()
                                 d, t, n = env.params['diameter'], env.params['strut_thickness'], env.params['num_struts']
                                 stress = 100 * (0.12 / max(t, 0.05))**1.5 * (10.0 / max(d, 5))**0.5 * (12 / max(n, 6))**0.8
+                                displacement = 0.3 * (env.params['length'] / 20) * (0.12 / max(t, 0.05))
                             training_state["stress_history"].append(float(stress))
+                            training_state["displacement_history"].append(float(displacement))
                     except Exception as e:
                         # print(f"Callback error: {e}")
                         pass
@@ -244,8 +255,10 @@ if SB3_AVAILABLE:
             training_state["episodes"] = 0
             training_state["rewards"] = []
             training_state["stress_history"] = []
+            training_state["displacement_history"] = []
             training_state["episode_rewards"] = []
             training_state["best_reward"] = -100.0
+            training_state["yaml_files"] = {}
         
         try:
             env = SimpleStentEnv(use_real_4c=use_real_4c)
@@ -258,6 +271,8 @@ if SB3_AVAILABLE:
                 training_state["is_training"] = False
         except Exception as e:
             print(f"Training error: {e}")
+            import traceback
+            traceback.print_exc()
             with state_lock:
                 training_state["is_training"] = False
 
@@ -621,6 +636,7 @@ def get_rl_status():
             "best_reward": float(training_state["best_reward"]),
             "rewards": [float(x) for x in training_state["rewards"]],  # Send ALL rewards
             "stress_history": [float(x) for x in training_state["stress_history"]],  # Send ALL
+            "displacement_history": [float(x) for x in training_state.get("displacement_history", [])],  # Send ALL
             "episode_rewards": [float(x) for x in training_state["episode_rewards"]],  # Send ALL
             "sb3_available": bool(SB3_AVAILABLE),
         }
@@ -646,6 +662,45 @@ def stop_training():
         training_state["is_training"] = False
     return {"status": "stopped"}
 
+@app.get("/training-files")
+def list_training_files():
+    """List available YAML/VTU files from training."""
+    with state_lock:
+        files = []
+        for step in sorted(training_state.get("yaml_files", {}).keys()):
+            files.append({
+                "step": step,
+                "yaml_url": f"/training-yaml/{step}",
+                "vtu_url": f"/training-vtu/{step}"
+            })
+        return {"files": files, "count": len(files)}
+
+@app.get("/training-yaml/{step}")
+def download_training_yaml(step: int):
+    """Download YAML file for a specific training step."""
+    from fastapi.responses import Response
+    with state_lock:
+        if step not in training_state.get("yaml_files", {}):
+            raise HTTPException(status_code=404, detail=f"Step {step} not found")
+        yaml_content = training_state["yaml_files"][step].get("yaml")
+        if not yaml_content:
+            raise HTTPException(status_code=404, detail=f"YAML not available for step {step}")
+        return Response(content=yaml_content, media_type="application/x-yaml",
+                       headers={"Content-Disposition": f"attachment; filename=step_{step}.4C.yaml"})
+
+@app.get("/training-vtu/{step}")
+def download_training_vtu(step: int):
+    """Download VTU file for a specific training step."""
+    from fastapi.responses import Response
+    with state_lock:
+        if step not in training_state.get("yaml_files", {}):
+            raise HTTPException(status_code=404, detail=f"Step {step} not found")
+        vtu_content = training_state["yaml_files"][step].get("vtu")
+        if not vtu_content:
+            raise HTTPException(status_code=404, detail=f"VTU not available for step {step}")
+        return Response(content=vtu_content, media_type="application/octet-stream",
+                       headers={"Content-Disposition": f"attachment; filename=step_{step}.vtu"})
+
 @app.post("/reset")
 def reset_training():
     """Reset RL training state."""
@@ -656,8 +711,10 @@ def reset_training():
         training_state["episodes"] = 0
         training_state["rewards"] = []
         training_state["stress_history"] = []
+        training_state["displacement_history"] = []
         training_state["episode_rewards"] = []
         training_state["best_reward"] = -100.0
+        training_state["yaml_files"] = {}
     return {"status": "reset"}
 
 
