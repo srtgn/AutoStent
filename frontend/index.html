@@ -268,7 +268,7 @@
             <!-- Mockup mode notification -->
             <div v-if="!useDocker && !useRealRL && !training" 
                  class="bg-gray-50 border border-gray-200 rounded px-3 py-2 mb-3 text-xs text-gray-600">
-                <strong>Mockup mode:</strong> Fast local simulation. Enable <em>4C Solver</em> + <em>RL (PPO)</em> for physics-based FEM and downloadable YAML/VTU files.
+                 Enable <em>4C Solver</em> + <em>RL (PPO)</em> for physics-based FEM and downloadable YAML/VTU files.
             </div>
 
             <!-- Controls & Stats in one row -->
@@ -1055,6 +1055,7 @@
 
                         rewardHistory.value.push(reward);
                         stressHistory.value.push(metrics.value.stress);
+                        displacementHistory.value.push(metrics.value.displacement);
 
                         if (episodeLength >= 50) {
                             episodeRewards.value.push(episodeReward);
