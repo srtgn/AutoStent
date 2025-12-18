@@ -369,14 +369,11 @@
                 <div class="mb-4">
                     <div class="text-xs text-gray-500 mb-1 uppercase flex items-center gap-2">
                         Reward Evolution
-                        <span v-if="(useDocker || useRealRL) && rewardHistory.length > 0" class="text-gray-400 font-normal normal-case">
-                            (click points to download)
-                        </span>
-                        <span v-else-if="!useDocker && !useRealRL && rewardHistory.length > 0" class="text-gray-400 font-normal normal-case italic">
-                            Enable 4C + RL for FEM simulation and file export
+                        <span v-if="rewardHistory.length > 0" class="text-gray-400 font-normal normal-case">
+                            (click points for details)
                         </span>
                     </div>
-                    <div id="reward-chart" style="height: 200px;" :style="{ cursor: (useDocker || useRealRL) ? 'pointer' : 'default' }"></div>
+                    <div id="reward-chart" style="height: 200px; cursor: pointer;"></div>
                 </div>
 
                 <!-- Stress Chart -->
@@ -496,10 +493,18 @@
                 </table>
                 
                 <!-- Download Button -->
-                <button @click="downloadBothFiles(downloadModal.step)"
+                <button v-if="useDocker || useRealRL" 
+                        @click="downloadBothFiles(downloadModal.step)"
                         class="w-full bg-gray-800 text-white py-2 rounded text-sm font-medium hover:bg-gray-700">
                     Download YAML + VTU
                 </button>
+                <div v-else class="text-center">
+                    <div class="text-xs text-gray-500 mb-2">Files not available in mockup mode</div>
+                    <button @click="downloadModal.show = false"
+                            class="w-full bg-gray-200 text-gray-600 py-2 rounded text-sm font-medium hover:bg-gray-300">
+                        Close
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -611,12 +616,6 @@
                 
                 // Show download modal for a training step
                 async function showDownloadModal(step, reward) {
-                    // Only allow download modal when 4C or RL mode is enabled
-                    if (!useDocker.value && !useRealRL.value) {
-                        console.log('Download modal disabled - enable 4C or RL mode');
-                        return;
-                    }
-                    
                     // Use local data from training arrays (step is 1-indexed, arrays are 0-indexed)
                     const idx = step - 1;
                     downloadModal.value.show = true;
@@ -628,8 +627,8 @@
                     // Use local params history first (most reliable)
                     if (paramsHistory.value[idx]) {
                         downloadModal.value.params = paramsHistory.value[idx];
-                    } else {
-                        // Fallback: try to get params from backend
+                    } else if (useDocker.value || useRealRL.value) {
+                        // Fallback: try to get params from backend (only in backend mode)
                         downloadModal.value.params = {};
                         try {
                             const res = await fetch(`${backendUrl}/training-yaml-info/${step}`);
@@ -643,11 +642,21 @@
                         } catch (e) {
                             console.error('Failed to fetch step info:', e);
                         }
+                    } else {
+                        // Mockup mode - no backend params available
+                        downloadModal.value.params = {};
                     }
                 }
                 
                 // Download both YAML and VTU files
                 function downloadBothFiles(step) {
+                    // Check if backend mode is enabled
+                    if (!useDocker.value && !useRealRL.value) {
+                        alert('Enable 4C Solver and RL (PPO) to generate downloadable files.\n\nMockup mode does not create YAML/VTU files.');
+                        downloadModal.value.show = false;
+                        return;
+                    }
+                    
                     // Download YAML
                     const yamlLink = document.createElement('a');
                     yamlLink.href = `${backendUrl}/training-yaml/${step}`;
@@ -1056,6 +1065,14 @@
                         rewardHistory.value.push(reward);
                         stressHistory.value.push(metrics.value.stress);
                         displacementHistory.value.push(metrics.value.displacement);
+                        // Store params for this step (for download modal)
+                        paramsHistory.value.push({
+                            diameter: params.value.diameter,
+                            length: params.value.length,
+                            strut_thickness: params.value.strutThickness,
+                            num_struts: params.value.numStruts,
+                            crown_height: params.value.crownHeight
+                        });
 
                         if (episodeLength >= 50) {
                             episodeRewards.value.push(episodeReward);
@@ -1437,26 +1454,26 @@
                     // No padding needed - use actual data length
                     let paddedRewards = [...rewardHistory.value];
                     
-                    // Show clickable markers when 4C or RL mode is enabled
+                    // Check if backend mode for download capability
                     const isBackendMode = useDocker.value || useRealRL.value;
 
-                    // Reward chart - x-axis matches steps counter
+                    // Reward chart - always show markers for clicking, but different hint
                     const rewardTrace = {
                         x: Array.from({ length: totalStepsNow }, (_, i) => i + 1),
                         y: paddedRewards,
                         type: 'scatter', 
-                        mode: isBackendMode ? 'lines+markers' : 'lines',
+                        mode: totalStepsNow > 0 ? 'lines+markers' : 'lines',
                         line: { color: '#2563eb', width: 1.5 },
-                        marker: isBackendMode ? { 
-                            size: 6, 
+                        marker: totalStepsNow > 0 ? { 
+                            size: 5, 
                             color: paddedRewards.map(r => r > 0 ? '#22c55e' : '#ef4444'),
-                            opacity: 0.7
+                            opacity: 0.6
                         } : undefined,
                         fill: 'tozeroy', 
                         fillcolor: 'rgba(37, 99, 235, 0.1)',
                         hovertemplate: isBackendMode 
                             ? '<b>Step %{x}</b><br>Reward: %{y:.3f}<br><i>Click to download</i><extra></extra>'
-                            : '<b>Step %{x}</b><br>Reward: %{y:.3f}<extra></extra>'
+                            : '<b>Step %{x}</b><br>Reward: %{y:.3f}<br><i>Click for details</i><extra></extra>'
                     };
 
                     const traces = [rewardTrace];
@@ -1480,21 +1497,21 @@
                     Plotly.react('reward-chart', traces, {
                         margin: { l: 50, r: 10, t: 10, b: 35 },
                         xaxis: { 
-                            title: isBackendMode ? 'Step (click to download)' : 'Step', 
+                            title: 'Step', 
                             gridcolor: '#f0f0f0', 
                             range: [0, xAxisMax] 
                         },
                         yaxis: rewardYAxis,
                         paper_bgcolor: 'white', plot_bgcolor: 'white',
                         showlegend: false,
-                        hovermode: isBackendMode ? 'closest' : 'x unified'
+                        hovermode: 'closest'
                     }, { responsive: true });
                     
-                    // Add click handler for downloading - only when backend mode is enabled
+                    // Add click handler for step details (always enabled when there's data)
                     const rewardChart = document.getElementById('reward-chart');
                     rewardChart.removeAllListeners?.('plotly_click');  // Remove old listeners
                     
-                    if (isBackendMode) {
+                    if (totalStepsNow > 0) {
                         rewardChart.on('plotly_click', async function(data) {
                             if (data.points && data.points.length > 0) {
                                 const point = data.points[0];
@@ -1555,12 +1572,6 @@
                     }
                 }, { deep: true });
                 
-                // Watch useDocker and useRealRL to update charts when toggled (shows/hides clickable markers)
-                watch([useDocker, useRealRL], () => {
-                    if (rewardHistory.value.length > 0) {
-                        updateCharts();
-                    }
-                });
 
                 onMounted(() => {
                     // Don't compute metrics on mount - displacement should be 0 initially
