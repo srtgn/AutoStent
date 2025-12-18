@@ -121,21 +121,31 @@
             font-family: inherit;
         }
 
-        /* Move Plotly modebar to top-left in one row */
-        #stent-3d .modebar-container {
-            left: 5px !important;
-            right: auto !important;
+        /* Move Plotly modebar to top-right in one row for all charts */
+        .js-plotly-plot .modebar-container {
+            right: 5px !important;
+            left: auto !important;
             top: 5px !important;
         }
 
-        #stent-3d .modebar {
+        .js-plotly-plot .modebar {
             display: flex !important;
             flex-direction: row !important;
+            background: rgba(255,255,255,0.9) !important;
+            border-radius: 4px !important;
         }
 
-        #stent-3d .modebar-group {
+        .js-plotly-plot .modebar-group {
             display: inline-flex !important;
             flex-direction: row !important;
+        }
+        
+        .js-plotly-plot .modebar-btn {
+            opacity: 0.6;
+        }
+        
+        .js-plotly-plot .modebar-btn:hover {
+            opacity: 1;
         }
     </style>
 </head>
@@ -148,7 +158,8 @@
                 <h1 class="text-2xl font-bold text-gray-800">AutoStent Design Optimization</h1>
                 <p class="text-gray-500 text-sm">Reinforcement Learning for Autonomous Stent Design</p>
             </div>
-            <div class="flex items-center gap-6">
+            <!-- Checkboxes hidden - always enabled by default -->
+            <div class="flex items-center gap-6" style="display: none;">
                 <!-- 4C Docker Mode Toggle -->
                 <div class="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg border border-gray-200 relative group">
                     <label class="flex items-center gap-2 cursor-pointer select-none">
@@ -265,12 +276,6 @@
         <div class="card p-4">
             <h2 class="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">RL Training</h2>
             
-            <!-- Mockup mode notification -->
-            <div v-if="!useDocker && !useRealRL && !training" 
-                 class="bg-gray-50 border border-gray-200 rounded px-3 py-2 mb-3 text-xs text-gray-600">
-                 Enable <em>4C Solver</em> + <em>RL (PPO)</em> for physics-based FEM and downloadable YAML/VTU files.
-            </div>
-
             <!-- Controls & Stats in one row -->
             <div class="flex items-center gap-4 mb-4 pb-4 border-b border-gray-100 relative">
                 <div class="flex items-center gap-2 bg-gray-50 rounded px-3 py-1">
@@ -577,13 +582,13 @@
                 let trainingInterval = null;
 
                 // Real RL state
-                const useRealRL = ref(false);
+                const useRealRL = ref(true);
                 const backendConnected = ref(false);
                 const backendUrl = 'https://4c.up.railway.app';  // Railway API for Real RL
                 let pollInterval = null;
 
                 // 4C Docker mode state (uses Railway cloud API)
-                const useDocker = ref(false);
+                const useDocker = ref(true);
                 const dockerAvailable = ref(true);
                 
                 // Track if user has interacted with params (for showing 0 displacement on start/reset)
@@ -642,13 +647,6 @@
                 
                 // Download both YAML and VTU files
                 function downloadBothFiles(step) {
-                    // Check if backend mode is enabled
-                    if (!useDocker.value && !useRealRL.value) {
-                        alert('Enable 4C Solver and RL (PPO) to generate downloadable files.\n\nMockup mode does not create YAML/VTU files.');
-                        downloadModal.value.show = false;
-                        return;
-                    }
-                    
                     // Download YAML
                     const yamlLink = document.createElement('a');
                     yamlLink.href = `${backendUrl}/training-yaml/${step}`;
@@ -1012,8 +1010,7 @@
                         return;
                     }
 
-                    // Simulated RL (mockup mode - no backend)
-                    console.log('[Mockup] Starting local training simulation');
+                    // Simulated RL (original code)
                     training.value = true;
                     progress.value = 0;
                     let currentStep = 0;
@@ -1055,28 +1052,26 @@
                         currentStep++;
                         progress.value = currentStep / totalSteps;
 
-                        // Force reactivity by re-assigning arrays (not just push)
-                        rewardHistory.value = [...rewardHistory.value, reward];
-                        stressHistory.value = [...stressHistory.value, metrics.value.stress];
-                        displacementHistory.value = [...displacementHistory.value, metrics.value.displacement];
+                        rewardHistory.value.push(reward);
+                        stressHistory.value.push(metrics.value.stress);
+                        displacementHistory.value.push(metrics.value.displacement);
                         // Store params for this step (for download modal)
-                        paramsHistory.value = [...paramsHistory.value, {
+                        paramsHistory.value.push({
                             diameter: params.value.diameter,
                             length: params.value.length,
                             strut_thickness: params.value.strutThickness,
                             num_struts: params.value.numStruts,
                             crown_height: params.value.crownHeight
-                        }];
+                        });
 
                         if (episodeLength >= 50) {
-                            episodeRewards.value = [...episodeRewards.value, episodeReward];
+                            episodeRewards.value.push(episodeReward);
                             episodes.value++;
                             episodeReward = 0;
                             episodeLength = 0;
                         }
 
-                        // Update charts more frequently in mockup mode (every 2 steps)
-                        if (currentStep % 2 === 0) {
+                        if (currentStep % 5 === 0) {
                             updateStent3D();
                             updateCharts();
                         }
@@ -1325,8 +1320,9 @@
                             x: 0.5, y: 1.08, xref: 'paper', yref: 'paper',
                             text: `Random: ${randomMean.value.toFixed(1)} ± ${randomStd.toFixed(1)} | RL: ${trainedMean.value.toFixed(1)} ± ${trainedStd.toFixed(1)}`,
                             showarrow: false, font: { size: 11, color: '#555' }
-                        }]
-                    }, { responsive: true });
+                        }],
+                        modebar: { orientation: 'h', bgcolor: 'rgba(255,255,255,0.8)' }
+                    }, { responsive: true, displayModeBar: true, modeBarButtonsToRemove: ['lasso2d', 'select2d'] });
 
                     // Histogram - with proper bin calculation
                     const binSize = (maxReward - minReward) / 15;
@@ -1380,8 +1376,9 @@
                             bordercolor: '#ddd',
                             borderwidth: 1,
                             font: { size: 11 }
-                        }
-                    }, { responsive: true });
+                        },
+                        modebar: { orientation: 'h', bgcolor: 'rgba(255,255,255,0.8)' }
+                    }, { responsive: true, displayModeBar: true, modeBarButtonsToRemove: ['lasso2d', 'select2d'] });
                 }
 
                 function updateStent3D() {
@@ -1443,11 +1440,6 @@
                     const rewardDataLength = rewardHistory.value.length;
                     const totalStepsNow = rewardDataLength || steps.value || 0;
                     
-                    // Debug logging for mockup mode
-                    if (totalStepsNow > 0 && totalStepsNow % 10 === 0) {
-                        console.log(`[Charts] Data points: ${totalStepsNow}, Last reward: ${rewardHistory.value[rewardHistory.value.length-1]?.toFixed(3)}`);
-                    }
-                    
                     // For empty charts, show axis range based on trainSteps
                     const xAxisMax = totalStepsNow > 0 ? totalStepsNow + 10 : trainSteps.value;
                     
@@ -1502,7 +1494,7 @@
                     if (totalStepsNow === 0) rewardYAxis.range = [-1, 0.5];
                     
                     Plotly.react('reward-chart', traces, {
-                        margin: { l: 50, r: 10, t: 10, b: 35 },
+                        margin: { l: 50, r: 10, t: 30, b: 35 },
                         xaxis: { 
                             title: 'Step', 
                             gridcolor: '#f0f0f0', 
@@ -1511,8 +1503,9 @@
                         yaxis: rewardYAxis,
                         paper_bgcolor: 'white', plot_bgcolor: 'white',
                         showlegend: false,
-                        hovermode: 'closest'
-                    }, { responsive: true });
+                        hovermode: 'closest',
+                        modebar: { orientation: 'h', bgcolor: 'rgba(255,255,255,0.8)' }
+                    }, { responsive: true, displayModeBar: true, modeBarButtonsToRemove: ['lasso2d', 'select2d'] });
                     
                     // Add click handler only in backend mode (when markers are shown)
                     const rewardChart = document.getElementById('reward-chart');
@@ -1565,12 +1558,13 @@
                     }
                     
                     Plotly.react('stress-chart', stressTraces, {
-                        margin: { l: 50, r: 10, t: 10, b: 35 },
+                        margin: { l: 50, r: 10, t: 30, b: 35 },
                         xaxis: { title: 'Step', gridcolor: '#f0f0f0', range: [0, xAxisMax] },
                         yaxis: stressYAxis,
                         paper_bgcolor: 'white', plot_bgcolor: 'white',
-                        showlegend: false
-                    }, { responsive: true });
+                        showlegend: false,
+                        modebar: { orientation: 'h', bgcolor: 'rgba(255,255,255,0.8)' }
+                    }, { responsive: true, displayModeBar: true, modeBarButtonsToRemove: ['lasso2d', 'select2d'] });
                 }
 
                 watch(params, () => {
