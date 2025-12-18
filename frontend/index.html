@@ -962,10 +962,11 @@
                             return;
                         }
 
-                        // Check 4C availability if docker mode is selected
+                        // Check 4C availability - silently fall back to mockup if unavailable
                         if (useDocker.value && fourcStatus.value === 'unavailable') {
-                            alert('⚠️ Real 4C solver is not available on the server.\n\nThe server reports that the 4C binary is not installed or not working.\n\nOptions:\n1. Uncheck "4C Solver (Cloud)" to use fast mockup mode\n2. Contact the server administrator to fix the 4C installation');
-                            return;
+                            console.warn('4C solver unavailable on server - falling back to mockup mode');
+                            useDocker.value = false;
+                            useRealRL.value = false;
                         }
 
                         // Start real RL training via backend
