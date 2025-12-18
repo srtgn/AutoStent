@@ -595,14 +595,16 @@ STRUCTURAL DYNAMIC:
 
 MATERIALS:
   - MAT: 1
-    MAT_Struct_PlasticNlnLogNeoHooke:
-      YOUNG: 200000.0
-      NUE: 0.3
+    MAT_ElastHyper:
+      NUMMAT: 1
+      MATIDS: [100]
       DENS: 7.8e-9
-      YIELD: 500.0
-      SATHARDENING: 1000.0
-      HARDEXPO: 5.0
-      VISC: 0.0
+  - MAT: 100
+    ELAST_IsoNeoHooke:
+      MUE:
+        constant: 76923.08
+      KAPPA:
+        constant: 166666.67
 
 # NOTE: This YAML is incomplete - 4C requires geometry/mesh
 # Without mesh tools, 4C cannot run. Using analytical fallback in code.
@@ -685,14 +687,16 @@ STRUCTURAL DYNAMIC:
 
 MATERIALS:
   - MAT: 1
-    MAT_Struct_PlasticNlnLogNeoHooke:
-      YOUNG: 200000.0
-      NUE: 0.3
+    MAT_ElastHyper:
+      NUMMAT: 1
+      MATIDS: [100]
       DENS: 7.8e-9
-      YIELD: 500.0
-      SATHARDENING: 1000.0
-      HARDEXPO: 5.0
-      VISC: 0.0
+  - MAT: 100
+    ELAST_IsoNeoHooke:
+      MUE:
+        constant: 76923.08
+      KAPPA:
+        constant: 166666.67
 
 """)
         
@@ -1293,14 +1297,16 @@ STRUCTURAL DYNAMIC:
 
 MATERIALS:
   - MAT: 1
-    MAT_Struct_PlasticNlnLogNeoHooke:
-      YOUNG: 200000.0
-      NUE: 0.3
+    MAT_ElastHyper:
+      NUMMAT: 1
+      MATIDS: [100]
       DENS: 7.8e-9
-      YIELD: 500.0
-      SATHARDENING: 1000.0
-      HARDEXPO: 5.0
-      VISC: 0.0
+  - MAT: 100
+    ELAST_IsoNeoHooke:
+      MUE:
+        constant: 76923.08
+      KAPPA:
+        constant: 166666.67
 
 # Mesh: {len(nodes)} nodes, {len(elements)} hex8 elements
 # Fixed nodes: {len(fixed_nodes)} (z=0 end)
@@ -1488,14 +1494,16 @@ STRUCTURAL DYNAMIC:
 
 MATERIALS:
   - MAT: 1
-    MAT_Struct_PlasticNlnLogNeoHooke:
-      YOUNG: 200000.0
-      NUE: 0.3
+    MAT_ElastHyper:
+      NUMMAT: 1
+      MATIDS: [100]
       DENS: 7.8e-9
-      YIELD: 500.0
-      SATHARDENING: 1000.0
-      HARDEXPO: 5.0
-      VISC: 0.0
+  - MAT: 100
+    ELAST_IsoNeoHooke:
+      MUE:
+        constant: 76923.08
+      KAPPA:
+        constant: 166666.67
 
 STRUCTURE GEOMETRY:
   FILE: stent_mesh.vtu
@@ -1551,14 +1559,16 @@ STRUCTURAL DYNAMIC:
 
 MATERIALS:
   - MAT: 1
-    MAT_Struct_PlasticNlnLogNeoHooke:
-      YOUNG: 200000.0
-      NUE: 0.3
+    MAT_ElastHyper:
+      NUMMAT: 1
+      MATIDS: [100]
       DENS: 7.8e-9
-      YIELD: 500.0
-      SATHARDENING: 1000.0
-      HARDEXPO: 5.0
-      VISC: 0.0
+  - MAT: 100
+    ELAST_IsoNeoHooke:
+      MUE:
+        constant: 76923.08
+      KAPPA:
+        constant: 166666.67
 """)
                 tutorial_yaml = test_yaml
                 print("Created minimal test YAML (no geometry)")
