@@ -5,9 +5,9 @@ dockerfilePath = "railway/Dockerfile"
 [deploy]
 healthcheckPath = "/health"
 healthcheckTimeout = 30
-startCommand = "python api_server.py"
 restartPolicyType = "on_failure"
 
 [env]
 PORT = "8080"
 PYTHONUNBUFFERED = "1"
+LD_LIBRARY_PATH = "/home/user/4C/build:/usr/local/lib:/usr/lib/x86_64-linux-gnu"

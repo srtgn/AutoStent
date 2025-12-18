@@ -295,43 +295,59 @@ def check_4c_status():
     import subprocess
     import shutil
     
-    result = {
-        "fourc_available": FOURC_AVAILABLE,
-        "mesh_tools_available": MESH_TOOLS_AVAILABLE if 'MESH_TOOLS_AVAILABLE' in dir() else False,
-        "sb3_available": SB3_AVAILABLE,
-        "binary_path": None,
-        "binary_exists": False,
-        "binary_version": None,
-        "error": None
-    }
-    
-    # Check if fourc binary exists
+    # Check if fourc binary exists and can execute
     fourc_path = shutil.which("fourc")
-    if fourc_path:
-        result["binary_path"] = fourc_path
-        result["binary_exists"] = True
-        
-        # Try to get version
+    binary_exists = False
+    can_execute = False
+    binary_version = None
+    error_msg = None
+    
+    if not fourc_path:
+        # Check common paths from Docker
+        for path in ["/usr/local/bin/fourc", "/home/user/4C/build/4C", "/usr/bin/fourc"]:
+            if Path(path).exists():
+                fourc_path = path
+                binary_exists = True
+                break
+    else:
+        binary_exists = True
+    
+    # Try to execute fourc to verify it works
+    if binary_exists and fourc_path:
         try:
+            # Set LD_LIBRARY_PATH for 4C execution
+            env = os.environ.copy()
+            env['LD_LIBRARY_PATH'] = '/home/user/4C/build:/usr/local/lib:/usr/lib/x86_64-linux-gnu:' + env.get('LD_LIBRARY_PATH', '')
+            
             version_output = subprocess.run(
-                ["fourc", "--version"], 
+                [fourc_path, "--version"], 
                 capture_output=True, 
                 text=True, 
-                timeout=5
+                timeout=5,
+                env=env
             )
-            result["binary_version"] = version_output.stdout.strip() or version_output.stderr.strip()
+            binary_version = version_output.stdout.strip() or version_output.stderr.strip()
+            can_execute = True
         except Exception as e:
-            result["error"] = f"Could not get version: {str(e)}"
+            error_msg = f"Could not execute fourc: {str(e)}"
+            can_execute = False
     else:
-        # Check common paths
-        for path in ["/usr/local/bin/fourc", "/usr/bin/fourc", "/app/fourc"]:
-            if Path(path).exists():
-                result["binary_path"] = path
-                result["binary_exists"] = True
-                break
-        
-        if not result["binary_exists"]:
-            result["error"] = "fourc binary not found in PATH or common locations"
+        error_msg = "fourc binary not found"
+    
+    result = {
+        "fourc_available": binary_exists and can_execute,
+        "fourc_can_execute": can_execute,
+        "mesh_tools_available": MESH_TOOLS_AVAILABLE if 'MESH_TOOLS_AVAILABLE' in dir() else False,
+        "sb3_available": SB3_AVAILABLE,
+        "binary_path": fourc_path,
+        "binary_exists": binary_exists,
+        "binary_version": binary_version,
+        "error": error_msg,
+        "debug_info": {
+            "ld_library_path": os.environ.get('LD_LIBRARY_PATH', 'not set'),
+            "missing_libs": "none"
+        }
+    }
     
     return result
 
