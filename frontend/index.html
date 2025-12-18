@@ -369,11 +369,11 @@
                 <div class="mb-4">
                     <div class="text-xs text-gray-500 mb-1 uppercase flex items-center gap-2">
                         Reward Evolution
-                        <span v-if="rewardHistory.length > 0" class="text-gray-400 font-normal normal-case">
-                            (click points for details)
+                        <span v-if="(useDocker || useRealRL) && rewardHistory.length > 0" class="text-gray-400 font-normal normal-case">
+                            (click points to download)
                         </span>
                     </div>
-                    <div id="reward-chart" style="height: 200px; cursor: pointer;"></div>
+                    <div id="reward-chart" style="height: 200px;" :style="{ cursor: (useDocker || useRealRL) ? 'pointer' : 'default' }"></div>
                 </div>
 
                 <!-- Stress Chart -->
@@ -493,18 +493,10 @@
                 </table>
                 
                 <!-- Download Button -->
-                <button v-if="useDocker || useRealRL" 
-                        @click="downloadBothFiles(downloadModal.step)"
+                <button @click="downloadBothFiles(downloadModal.step)"
                         class="w-full bg-gray-800 text-white py-2 rounded text-sm font-medium hover:bg-gray-700">
                     Download YAML + VTU
                 </button>
-                <div v-else class="text-center">
-                    <div class="text-xs text-gray-500 mb-2">Files not available in mockup mode</div>
-                    <button @click="downloadModal.show = false"
-                            class="w-full bg-gray-200 text-gray-600 py-2 rounded text-sm font-medium hover:bg-gray-300">
-                        Close
-                    </button>
-                </div>
             </div>
         </div>
     </div>
@@ -1454,26 +1446,24 @@
                     // No padding needed - use actual data length
                     let paddedRewards = [...rewardHistory.value];
                     
-                    // Check if backend mode for download capability
+                    // Check if backend mode (4C or RL enabled)
                     const isBackendMode = useDocker.value || useRealRL.value;
 
-                    // Reward chart - always show markers for clicking, but different hint
+                    // Reward chart - markers only in backend mode
                     const rewardTrace = {
                         x: Array.from({ length: totalStepsNow }, (_, i) => i + 1),
                         y: paddedRewards,
                         type: 'scatter', 
-                        mode: totalStepsNow > 0 ? 'lines+markers' : 'lines',
+                        mode: isBackendMode ? 'lines+markers' : 'lines',
                         line: { color: '#2563eb', width: 1.5 },
-                        marker: totalStepsNow > 0 ? { 
+                        marker: isBackendMode ? { 
                             size: 5, 
                             color: paddedRewards.map(r => r > 0 ? '#22c55e' : '#ef4444'),
                             opacity: 0.6
                         } : undefined,
                         fill: 'tozeroy', 
                         fillcolor: 'rgba(37, 99, 235, 0.1)',
-                        hovertemplate: isBackendMode 
-                            ? '<b>Step %{x}</b><br>Reward: %{y:.3f}<br><i>Click to download</i><extra></extra>'
-                            : '<b>Step %{x}</b><br>Reward: %{y:.3f}<br><i>Click for details</i><extra></extra>'
+                        hovertemplate: '<b>Step %{x}</b><br>Reward: %{y:.3f}<extra></extra>'
                     };
 
                     const traces = [rewardTrace];
@@ -1507,11 +1497,11 @@
                         hovermode: 'closest'
                     }, { responsive: true });
                     
-                    // Add click handler for step details (always enabled when there's data)
+                    // Add click handler only in backend mode (when markers are shown)
                     const rewardChart = document.getElementById('reward-chart');
                     rewardChart.removeAllListeners?.('plotly_click');  // Remove old listeners
                     
-                    if (totalStepsNow > 0) {
+                    if (isBackendMode && totalStepsNow > 0) {
                         rewardChart.on('plotly_click', async function(data) {
                             if (data.points && data.points.length > 0) {
                                 const point = data.points[0];
@@ -1572,6 +1562,12 @@
                     }
                 }, { deep: true });
                 
+                // Update charts when checkboxes change (show/hide markers)
+                watch([useDocker, useRealRL], () => {
+                    if (rewardHistory.value.length > 0) {
+                        updateCharts();
+                    }
+                });
 
                 onMounted(() => {
                     // Don't compute metrics on mount - displacement should be 0 initially
