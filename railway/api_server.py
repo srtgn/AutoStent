@@ -596,16 +596,13 @@ STRUCTURAL DYNAMIC:
 MATERIALS:
   - MAT: 1
     MAT_ElastHyper:
-      NUMMAT: 2
-      MATIDS: [2, 3]
+      NUMMAT: 1
+      MATIDS: [2]
       DENS: 7.8e-9
   - MAT: 2
-    ELAST_IsoNeoHooke:
-      MUE:
-        constant: 76923.0
-  - MAT: 3
-    ELAST_VolSussmanBathe:
-      KAPPA: 166667.0
+    ELAST_CoupNeoHooke:
+      YOUNG: 200000.0
+      NUE: 0.3
 
 # NOTE: This YAML is incomplete - 4C requires geometry/mesh
 # Without mesh tools, 4C cannot run. Using analytical fallback in code.
@@ -689,16 +686,13 @@ STRUCTURAL DYNAMIC:
 MATERIALS:
   - MAT: 1
     MAT_ElastHyper:
-      NUMMAT: 2
-      MATIDS: [2, 3]
+      NUMMAT: 1
+      MATIDS: [2]
       DENS: 7.8e-9
   - MAT: 2
-    ELAST_IsoNeoHooke:
-      MUE:
-        constant: 76923.0
-  - MAT: 3
-    ELAST_VolSussmanBathe:
-      KAPPA: 166667.0
+    ELAST_CoupNeoHooke:
+      YOUNG: 200000.0
+      NUE: 0.3
 
 """)
         
@@ -1300,16 +1294,13 @@ STRUCTURAL DYNAMIC:
 MATERIALS:
   - MAT: 1
     MAT_ElastHyper:
-      NUMMAT: 2
-      MATIDS: [2, 3]
+      NUMMAT: 1
+      MATIDS: [2]
       DENS: 7.8e-9
   - MAT: 2
-    ELAST_IsoNeoHooke:
-      MUE:
-        constant: 76923.0
-  - MAT: 3
-    ELAST_VolSussmanBathe:
-      KAPPA: 166667.0
+    ELAST_CoupNeoHooke:
+      YOUNG: 200000.0
+      NUE: 0.3
 
 # Mesh: {len(nodes)} nodes, {len(elements)} hex8 elements
 # Fixed nodes: {len(fixed_nodes)} (z=0 end)
@@ -1433,8 +1424,116 @@ def test_4c_docker_direct():
     
     try:
         use_generated_stent = False
+        use_simple_cube = True  # Start with simple test
         
-        if not tutorial_yaml or not Path(fourc_bin).exists():
+        if use_simple_cube and MESH_TOOLS_AVAILABLE:
+            # Create a simple single-element cube test first
+            print("Creating simple cube test...")
+            try:
+                # Single hex8 cube: 1mm x 1mm x 1mm
+                cube_nodes = np.array([
+                    [0.0, 0.0, 0.0],  # 0
+                    [1.0, 0.0, 0.0],  # 1
+                    [1.0, 1.0, 0.0],  # 2
+                    [0.0, 1.0, 0.0],  # 3
+                    [0.0, 0.0, 1.0],  # 4
+                    [1.0, 0.0, 1.0],  # 5
+                    [1.0, 1.0, 1.0],  # 6
+                    [0.0, 1.0, 1.0],  # 7
+                ])
+                cube_elements = np.array([[0, 1, 2, 3, 4, 5, 6, 7]])
+                
+                # Fixed: bottom face (z=0), nodes 0,1,2,3
+                # Loaded: top face (z=1), nodes 4,5,6,7
+                fixed_nodes = np.array([0, 1, 2, 3])
+                loaded_nodes = np.array([4, 5, 6, 7])
+                
+                vtu_path = work_dir / "cube_mesh.vtu"
+                write_vtu_file(cube_nodes, cube_elements, str(vtu_path),
+                              fixed_nodes=fixed_nodes, loaded_nodes=loaded_nodes)
+                print(f"✓ Generated cube VTU: 8 nodes, 1 element")
+                
+                # Simple compression test YAML
+                test_yaml = work_dir / "cube_test.4C.yaml"
+                test_yaml.write_text("""TITLE: Simple cube compression test
+PROBLEM TYPE:
+  PROBLEMTYPE: Structure
+
+SOLVER 1:
+  SOLVER: "Superlu"
+  NAME: "Structure_Solver"
+
+IO:
+  STRUCT_STRESS: "Cauchy"
+  STRUCT_STRAIN: "GL"
+  VERBOSITY: "Standard"
+
+IO/RUNTIME VTK OUTPUT:
+  INTERVAL_STEPS: 1
+  OUTPUT_DATA_FORMAT: binary
+
+IO/RUNTIME VTK OUTPUT/STRUCTURE:
+  OUTPUT_STRUCTURE: true
+  DISPLACEMENT: true
+  STRESS_STRAIN: true
+
+STRUCTURAL DYNAMIC:
+  INT_STRATEGY: "Standard"
+  DYNAMICTYPE: "Statics"
+  TIMESTEP: 1.0
+  NUMSTEP: 1
+  MAXTIME: 1.0
+  LINEAR_SOLVER: 1
+  TOLDISP: 1e-06
+  TOLRES: 1e-06
+  LOADLIN: true
+
+MATERIALS:
+  - MAT: 1
+    MAT_ElastHyper:
+      NUMMAT: 1
+      MATIDS: [2]
+      DENS: 7.8e-9
+  - MAT: 2
+    ELAST_CoupNeoHooke:
+      YOUNG: 200000.0
+      NUE: 0.3
+
+STRUCTURE GEOMETRY:
+  FILE: cube_mesh.vtu
+  ELEMENT_BLOCKS:
+    - ID: 1
+      SOLID:
+        HEX8:
+          MAT: 1
+          KINEM: nonlinear
+
+# Bottom face fixed (z=0)
+DESIGN POINT DIRICH CONDITIONS:
+  - E: 1
+    ENTITY_TYPE: node_set_id
+    NUMDOF: 3
+    ONOFF: [1, 1, 1]
+    VAL: [0.0, 0.0, 0.0]
+    FUNCT: [0, 0, 0]
+
+# Top face loaded (z=1) - apply small force in -z direction
+DESIGN POINT NEUMANN CONDITIONS:
+  - E: 2
+    ENTITY_TYPE: node_set_id
+    NUMDOF: 3
+    ONOFF: [0, 0, 1]
+    VAL: [0.0, 0.0, -0.001]
+    FUNCT: [0, 0, 0]
+""")
+                tutorial_yaml = test_yaml
+                use_generated_stent = True
+                print("Created simple cube compression test")
+            except Exception as e:
+                print(f"Failed to create cube test: {e}")
+                use_simple_cube = False
+        
+        if not use_generated_stent and not tutorial_yaml or not Path(fourc_bin).exists():
             # Try to generate our own stent mesh with 4C-compliant YAML
             if MESH_TOOLS_AVAILABLE:
                 print("No tutorial file found - generating stent mesh...")
@@ -1498,16 +1597,13 @@ STRUCTURAL DYNAMIC:
 MATERIALS:
   - MAT: 1
     MAT_ElastHyper:
-      NUMMAT: 2
-      MATIDS: [2, 3]
+      NUMMAT: 1
+      MATIDS: [2]
       DENS: 7.8e-9
   - MAT: 2
-    ELAST_IsoNeoHooke:
-      MUE:
-        constant: 76923.0
-  - MAT: 3
-    ELAST_VolSussmanBathe:
-      KAPPA: 166667.0
+    ELAST_CoupNeoHooke:
+      YOUNG: 200000.0
+      NUE: 0.3
 
 STRUCTURE GEOMETRY:
   FILE: stent_mesh.vtu
@@ -1564,16 +1660,13 @@ STRUCTURAL DYNAMIC:
 MATERIALS:
   - MAT: 1
     MAT_ElastHyper:
-      NUMMAT: 2
-      MATIDS: [2, 3]
+      NUMMAT: 1
+      MATIDS: [2]
       DENS: 7.8e-9
   - MAT: 2
-    ELAST_IsoNeoHooke:
-      MUE:
-        constant: 76923.0
-  - MAT: 3
-    ELAST_VolSussmanBathe:
-      KAPPA: 166667.0
+    ELAST_CoupNeoHooke:
+      YOUNG: 200000.0
+      NUE: 0.3
 """)
                 tutorial_yaml = test_yaml
                 print("Created minimal test YAML (no geometry)")
@@ -1618,7 +1711,8 @@ MATERIALS:
             "yaml_exists": Path(tutorial_yaml).exists() if tutorial_yaml else False,
             "found_test_files": found_files[:10] if found_files else [],
             "mesh_tools_available": MESH_TOOLS_AVAILABLE,
-            "used_generated_stent": use_generated_stent if 'use_generated_stent' in dir() else False
+            "used_generated_stent": use_generated_stent if 'use_generated_stent' in dir() else False,
+            "test_type": "simple_cube" if use_simple_cube else "stent_mesh"
         }
     except subprocess.TimeoutExpired:
         return {
