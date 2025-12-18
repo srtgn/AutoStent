@@ -86,15 +86,30 @@ def generate_cylindrical_stent_mesh(
             j_next = (j + 1) % n_circumferential
             for k in range(n_radial):
                 # Hex8 node ordering (VTK convention)
-                n0 = node_map[(i, j, k)]
-                n1 = node_map[(i, j_next, k)]
-                n2 = node_map[(i, j_next, k + 1)]
-                n3 = node_map[(i, j, k + 1)]
-                n4 = node_map[(i + 1, j, k)]
-                n5 = node_map[(i + 1, j_next, k)]
-                n6 = node_map[(i + 1, j_next, k + 1)]
-                n7 = node_map[(i + 1, j, k + 1)]
-                elements.append([n0, n1, n2, n3, n4, n5, n6, n7])
+                # For positive Jacobian: bottom face normal should point INTO element (-z)
+                # This requires CLOCKWISE ordering when viewed from above (+z looking down)
+                # 
+                # Bottom face at z=i:
+                #   n3 (j+1,k) ---- n2 (j+1,k+1)
+                #        |              |
+                #   n0 (j,k) ------ n1 (j,k+1)
+                # 
+                # Clockwise from above: n0 -> n3 -> n2 -> n1
+                
+                # Get node indices
+                p0 = node_map[(i, j, k)]          # lower z, theta_j, inner r
+                p1 = node_map[(i, j, k + 1)]      # lower z, theta_j, outer r
+                p2 = node_map[(i, j_next, k + 1)] # lower z, theta_j+1, outer r
+                p3 = node_map[(i, j_next, k)]     # lower z, theta_j+1, inner r
+                p4 = node_map[(i + 1, j, k)]      # upper z, theta_j, inner r
+                p5 = node_map[(i + 1, j, k + 1)]  # upper z, theta_j, outer r
+                p6 = node_map[(i + 1, j_next, k + 1)]  # upper z, theta_j+1, outer r
+                p7 = node_map[(i + 1, j_next, k)]     # upper z, theta_j+1, inner r
+                
+                # Reorder for clockwise bottom face (viewed from +z)
+                # VTK order: [n0, n1, n2, n3, n4, n5, n6, n7]
+                # where face 0-1-2-3 is bottom, face 4-5-6-7 is top
+                elements.append([p0, p3, p2, p1, p4, p7, p6, p5])
     
     elements = np.array(elements, dtype=int)
     

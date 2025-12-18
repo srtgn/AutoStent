@@ -1538,16 +1538,16 @@ DESIGN POINT NEUMANN CONDITIONS:
             if MESH_TOOLS_AVAILABLE:
                 print("No tutorial file found - generating stent mesh...")
                 try:
-                    # Generate small stent mesh
+                    # Generate very coarse stent mesh for testing
                     geometry = StentGeometry(
                         diameter=10.0,
-                        length=20.0,
-                        strut_thickness=0.12,
-                        num_struts=8,  # Fewer struts for faster test
+                        length=10.0,  # Shorter
+                        strut_thickness=1.0,  # Thicker for better elements
+                        num_struts=4,  # Minimal struts
                         crown_height=1.0
                     )
                     nodes, elements, fixed_nodes, loaded_nodes = generate_cylindrical_stent_mesh(
-                        geometry, n_circumferential_per_strut=2, n_radial=1  # Coarse mesh
+                        geometry, n_circumferential_per_strut=1, n_radial=1  # Very coarse
                     )
                     
                     # Write VTU file with required 4C arrays (block_id, point_sets)
@@ -1593,6 +1593,7 @@ STRUCTURAL DYNAMIC:
   LINEAR_SOLVER: 1
   TOLDISP: 1e-06
   TOLRES: 1e-06
+  LOADLIN: true
 
 MATERIALS:
   - MAT: 1
@@ -1615,7 +1616,8 @@ STRUCTURE GEOMETRY:
           KINEM: nonlinear
 
 # Boundary conditions using point_set arrays from VTU file
-# point_set_1 = fixed nodes, point_set_2 = loaded nodes
+# point_set_1 = fixed nodes (z=0), point_set_2 = loaded nodes (outer surface)
+# Apply simple axial loading for testing
 DESIGN POINT DIRICH CONDITIONS:
   - E: 1
     ENTITY_TYPE: node_set_id
@@ -1624,12 +1626,13 @@ DESIGN POINT DIRICH CONDITIONS:
     VAL: [0.0, 0.0, 0.0]
     FUNCT: [0, 0, 0]
 
+# Apply small axial force in Z direction on outer surface
 DESIGN POINT NEUMANN CONDITIONS:
   - E: 2
     ENTITY_TYPE: node_set_id
     NUMDOF: 3
-    ONOFF: [1, 1, 0]
-    VAL: [{pressure}, {pressure}, 0.0]
+    ONOFF: [0, 0, 1]
+    VAL: [0.0, 0.0, {pressure}]
     FUNCT: [0, 0, 0]
 """)
                     tutorial_yaml = test_yaml
