@@ -1424,7 +1424,7 @@ def test_4c_docker_direct():
     
     try:
         use_generated_stent = False
-        use_simple_cube = True  # Test 2x2x2 cube (8 elements) first
+        use_simple_cube = False  # 2x2x2 cube passed! Now test stent mesh
         
         if use_simple_cube and MESH_TOOLS_AVAILABLE:
             # Create a 2x2x2 cube mesh (8 elements) to test multi-element VTU
