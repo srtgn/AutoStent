@@ -600,7 +600,7 @@ MATERIALS:
             # Using DESIGN SURF NEUMANN CONDITIONS (with SurfNeumann) provides correct stiffness matrix.
             # The correct ONOFF configuration for orthopressure is [1, 0, 0] (scalar pressure on first slot).
             f.write(f"""
-DESIGN POINT DIRICHLET CONDITIONS:
+DESIGN POINT DIRICH CONDITIONS:
   - E: 1
     ENTITY_TYPE: node_set_id
     NUMDOF: 3
@@ -643,8 +643,8 @@ DESIGN SURF DIRICH CONDITIONS:
 DESIGN SURF NEUMANN CONDITIONS:
   - E: 2
     NUMDOF: 3
-    ONOFF: [1, 1, 0]
-    VAL: [{pressure}, {pressure}, 0.0]
+    ONOFF: [1, 0, 0]
+    VAL: [{pressure}, 0.0, 0.0]
     FUNCT: [0, 0, 0]
 """)
 
