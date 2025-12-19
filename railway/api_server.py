@@ -375,12 +375,10 @@ try:
         StentGeometry,
         generate_cylindrical_stent_mesh,
         write_4c_geometry,
-        write_vtu_file,
-        PV_AVAILABLE as PV_AVAILABLE_FROM_MESH
+        write_vtu_file
     )
     from vtu_parser import parse_vtu_file, find_latest_vtu
     MESH_TOOLS_AVAILABLE = True
-    PV_AVAILABLE = PV_AVAILABLE_FROM_MESH
     print("✓ Mesh tools imported successfully")
 except ImportError as e:
     MESH_IMPORT_ERROR = str(e)
@@ -424,93 +422,17 @@ def check_mesh_tools():
 
 
 def generate_4c_yaml(params: StentParams, output_path: Path):
-    """Generate complete 4C YAML input file with real mesh."""
+    """Generate complete 4C YAML input file with VTU mesh file."""
     
     if not MESH_TOOLS_AVAILABLE:
-        # Generate minimal but VALID 4C YAML that can actually run
-        # Use analytical approximation since we can't generate mesh
-        # This is a placeholder - 4C needs geometry, but we'll use a simple beam model
-        yaml_content = f"""TITLE: Stent simulation (analytical approximation)
+        # Fallback to simple YAML without mesh
+        yaml_content = f"""TITLE: Stent simulation - diameter={params.diameter}mm, length={params.length}mm
 PROBLEM TYPE:
   PROBLEMTYPE: Structure
 
-IO:
-  OUTPUT_SPRING: true
-  STRUCT_STRESS: "Cauchy"
-  VERBOSITY: "Standard"
-  WRITE_INITIAL_STATE: false
-
-IO/RUNTIME VTK OUTPUT:
-  INTERVAL_STEPS: 1
-  OUTPUT_DATA_FORMAT: binary
-
-STRUCTURAL DYNAMIC:
-  INT_STRATEGY: "Standard"
-  DYNAMICTYPE: "Statics"
-  TIMESTEP: 1.0
-  NUMSTEP: 1
-  MAXTIME: 1.0
-  LINEAR_SOLVER: 1
-  TOLDISP: 1e-06
-  TOLRES: 1e-06
-
-MATERIALS:
-  - MAT: 1
-    MAT_ElastHyper:
-      NUMMAT: 1
-      MATIDS: [2]
-      DENS: 7.8e-9
-  - MAT: 2
-    ELAST_CoupNeoHooke:
-      YOUNG: 200000.0
-      NUE: 0.3
-
-# NOTE: This YAML is incomplete - 4C requires geometry/mesh
-# Without mesh tools, 4C cannot run. Using analytical fallback in code.
-"""
-        output_path.write_text(yaml_content)
-        print(f"WARNING: Generated incomplete YAML (no mesh tools). 4C will fail.")
-        print(f"  This is expected - code will use analytical fallback.")
-        return
-    
-    # Generate real mesh
-    geometry = StentGeometry(
-        diameter=params.diameter,
-        length=params.length,
-        strut_thickness=params.strut_thickness,
-        num_struts=params.num_struts,
-        crown_height=params.crown_height
-    )
-    
-    nodes, elements, fixed_nodes, loaded_nodes = generate_cylindrical_stent_mesh(
-        geometry,
-        n_circumferential_per_strut=4,
-        n_radial=2
-    )
-    
-    # Write VTU file (4C prefers this format)
-    # Include block_id and point_set arrays required by 4C
-    vtu_path = output_path.parent / f"{output_path.stem}.vtu"
-    if PV_AVAILABLE:
-        try:
-            write_vtu_file(
-                nodes, elements, str(vtu_path),
-                fixed_nodes=np.array(fixed_nodes),
-                loaded_nodes=np.array(loaded_nodes)
-            )
-            print(f"✓ Generated VTU file: {vtu_path} with block_id and point_sets")
-            use_vtu = True
-        except Exception as e:
-            print(f"⚠ Failed to write VTU file: {e}, using inline geometry")
-            use_vtu = False
-    else:
-        use_vtu = False
-    
-    # Write complete 4C YAML (matching 4C's actual format from tutorial)
-    with open(output_path, 'w') as f:
-        f.write(f"""TITLE: Stent simulation - diameter={params.diameter}mm, length={params.length}mm
-PROBLEM TYPE:
-  PROBLEMTYPE: Structure
+SOLVER 1:
+  SOLVER: "Superlu"
+  NAME: "Structure_Solver"
 
 IO:
   OUTPUT_SPRING: true
@@ -528,10 +450,6 @@ IO/RUNTIME VTK OUTPUT/STRUCTURE:
   DISPLACEMENT: true
   STRESS_STRAIN: true
   GAUSS_POINT_DATA_OUTPUT_TYPE: nodes
-
-SOLVER 1:
-  SOLVER: "Superlu"
-  NAME: "Structure_Solver"
 
 STRUCTURAL DYNAMIC:
   INT_STRATEGY: "Standard"
@@ -555,12 +473,90 @@ MATERIALS:
       YOUNG: 200000.0
       NUE: 0.3
 
-""")
-        
-        # Use VTU file if available, otherwise inline geometry
-        if use_vtu and vtu_path.exists():
-            f.write(f"""STRUCTURE GEOMETRY:
-  FILE: {vtu_path.name}
+# Mesh tools not available - using placeholder
+"""
+        output_path.write_text(yaml_content)
+        return
+    
+    # Generate real mesh
+    geometry = StentGeometry(
+        diameter=params.diameter,
+        length=params.length,
+        strut_thickness=params.strut_thickness,
+        num_struts=params.num_struts,
+        crown_height=params.crown_height
+    )
+    
+    nodes, elements, fixed_nodes, loaded_nodes = generate_cylindrical_stent_mesh(
+        geometry,
+        n_circumferential_per_strut=4,
+        n_radial=2
+    )
+    
+    # Generate VTU file
+    vtu_path = output_path.parent / f"{output_path.stem}_mesh.vtu"
+    import numpy as np
+    write_vtu_file(
+        nodes,
+        elements,
+        str(vtu_path),
+        fixed_nodes=np.array(fixed_nodes),
+        loaded_nodes=np.array(loaded_nodes)
+    )
+    
+    # Write complete 4C YAML with VTU reference
+    vtu_filename = vtu_path.name
+    pressure = params.diameter * 0.1  # Radial pressure in MPa
+    
+    yaml_content = f"""TITLE: Stent simulation - diameter={params.diameter}mm, length={params.length}mm
+PROBLEM TYPE:
+  PROBLEMTYPE: Structure
+
+SOLVER 1:
+  SOLVER: "Superlu"
+  NAME: "Structure_Solver"
+
+IO:
+  OUTPUT_SPRING: true
+  STRUCT_STRESS: "Cauchy"
+  STRUCT_STRAIN: "GL"
+  VERBOSITY: "Standard"
+  WRITE_INITIAL_STATE: false
+
+IO/RUNTIME VTK OUTPUT:
+  INTERVAL_STEPS: 1
+  OUTPUT_DATA_FORMAT: binary
+
+IO/RUNTIME VTK OUTPUT/STRUCTURE:
+  OUTPUT_STRUCTURE: true
+  DISPLACEMENT: true
+  STRESS_STRAIN: true
+  GAUSS_POINT_DATA_OUTPUT_TYPE: nodes
+
+STRUCTURAL DYNAMIC:
+  INT_STRATEGY: "Standard"
+  DYNAMICTYPE: "Statics"
+  TIMESTEP: 1.0
+  NUMSTEP: 1
+  MAXTIME: 1.0
+  TOLDISP: 1e-06
+  TOLRES: 1e-06
+  LOADLIN: true
+  LINEAR_SOLVER: 1
+
+MATERIALS:
+  - MAT: 1
+    MAT_ElastHyper:
+      NUMMAT: 1
+      MATIDS: [2]
+      DENS: 7.8e-9
+  - MAT: 2
+    ELAST_CoupNeoHooke:
+      YOUNG: 200000.0
+      NUE: 0.3
+
+STRUCTURE GEOMETRY:
+  FILE: {vtu_filename}
   ELEMENT_BLOCKS:
     - ID: 1
       SOLID:
@@ -568,87 +564,24 @@ MATERIALS:
           MAT: 1
           KINEM: nonlinear
 
-""")
-        else:
-            # Fallback: inline geometry (may not work, but better than nothing)
-            f.write("GEOMETRY:\n")
-            f.write("  NODES:\n")
-            for i, node in enumerate(nodes):
-                f.write(f"    - ID: {i+1}\n")
-                f.write(f"      COORDS: [{node[0]:.6f}, {node[1]:.6f}, {node[2]:.6f}]\n")
-            
-            f.write("\n  ELEMENTS:\n")
-            for i, elem in enumerate(elements):
-                node_ids = ", ".join(str(n+1) for n in elem)
-                f.write(f"    - ID: {i+1}\n")
-                f.write(f"      TYPE: hex8\n")
-                f.write(f"      NODES: [{node_ids}]\n")
-            
-            f.write("\n  ELEMENT_BLOCKS:\n")
-            f.write("    - ID: 1\n")
-            f.write(f"      ELEMENTS: [1-{len(elements)}]\n")
-            f.write("      MATERIAL: 1\n")
-        
-        # Boundary conditions
-        # Fixed end: all DOFs fixed at z=0
-        # Loaded surface: radial pressure on outer surface
-        pressure = params.diameter * 0.1  # Radial pressure in MPa
-        
-        if use_vtu:
-            # When using VTU, point_sets are embedded in the file
-            # FIXED: DESIGN POINT NEUMANN CONDITIONS (with PointNeumann) lacks linearization and causes divergence.
-            # Using DESIGN SURF NEUMANN CONDITIONS (with SurfNeumann) provides correct stiffness matrix.
-            # The correct ONOFF configuration for orthopressure is [1, 0, 0] (scalar pressure on first slot).
-            f.write(f"""
-DESIGN POINT DIRICH CONDITIONS:
-  - E: 1
-    ENTITY_TYPE: node_set_id
-    NUMDOF: 3
-    ONOFF: [1, 1, 1]
-    VAL: [0.0, 0.0, 0.0]
-    FUNCT: [0, 0, 0]
-
-DESIGN SURF NEUMANN CONDITIONS:
-  - E: 2
-    # ENTITY_TYPE: node_set_id - surface conditions don't typically use this, they use side sets
-    # However, since we encoded surfaces as point sets in the VTU, we might need a workaround.
-    # But wait, generate_cylindrical_stent_mesh/write_vtu_file creates point logs, not surface logs?
-    # If 4C fails to find surface 2, we might need to revert to point logs but fix the source code.
-    # Let's try the corrected syntax first.
-    NUMDOF: 3
-    ENTITY_TYPE: node_set_id
-    ONOFF: [1, 0, 0]
-    VAL: [{pressure}, 0.0, 0.0]
-    FUNCT: [0, 0, 0]
-""")
-        else:
-            # Inline geometry - define node sets in YAML
-            fixed_node_ids = [n+1 for n in fixed_nodes]
-            loaded_node_ids = [n+1 for n in loaded_nodes]
-            
-            f.write(f"""
-# Node sets for boundary conditions (inline geometry)
-DNODE-NODE SETS:
-  DSURF 1:
-    DNODES: [{', '.join(map(str, fixed_node_ids[:50]))}]
-  DSURF 2:
-    DNODES: [{', '.join(map(str, loaded_node_ids[:50]))}]
-
 DESIGN SURF DIRICH CONDITIONS:
   - E: 1
+    ENTITY_TYPE: node_set_id
     NUMDOF: 3
     ONOFF: [1, 1, 1]
     VAL: [0.0, 0.0, 0.0]
     FUNCT: [0, 0, 0]
 
 DESIGN SURF NEUMANN CONDITIONS:
-  - E: 2
-    NUMDOF: 3
+  - E: 1
     ENTITY_TYPE: node_set_id
-    ONOFF: [1, 0, 0]
-    VAL: [{pressure}, 0.0, 0.0]
+    NUMDOF: 3
+    ONOFF: [1, 1, 0]
+    VAL: [{pressure}, {pressure}, 0.0]
     FUNCT: [0, 0, 0]
-""")
+    TYPE: "orthopressure"
+"""
+    output_path.write_text(yaml_content)
 
 
 def run_real_4c_simulation(params: StentParams):
@@ -697,13 +630,17 @@ def run_real_4c_simulation(params: StentParams):
                 "fallback_used": True
             }
         
-        # Parse VTU files for actual results
+        # Parse VTU/VTK files for actual results (if available)
         max_stress = 0.0
         max_disp = 0.0
         max_strain = 0.0
         
         if MESH_TOOLS_AVAILABLE:
-            latest_vtu = find_latest_vtu(output_dir)
+            # IMPORTANT: 4C may write outputs either into work_dir/output (directory style)
+            # or next to the YAML file with an output-name prefix (prefix style).
+            # The simulator returns its best guess in result.output_directory.
+            search_dir = result.output_directory if hasattr(result, "output_directory") else output_dir
+            latest_vtu = find_latest_vtu(Path(search_dir))
             if latest_vtu:
                 try:
                     max_stress, max_disp, max_strain, parse_success = parse_vtu_file(latest_vtu)
@@ -714,7 +651,7 @@ def run_real_4c_simulation(params: StentParams):
                 except Exception as e:
                     print(f"Error parsing VTU: {e}")
             else:
-                print("No VTU files found - 4C may not have output results")
+                print("No VTU/VTK files found - 4C may have written no runtime VTK output")
         
         # Read YAML and VTU content for storage
         yaml_content = None

@@ -23,10 +23,9 @@
             border-radius: 8px;
             overflow: hidden;
         }
-
+        
         /* Prevent Plotly charts from overflowing on first render */
-        .js-plotly-plot,
-        .plotly {
+        .js-plotly-plot, .plotly {
             max-width: 100% !important;
         }
 
@@ -132,7 +131,7 @@
         .js-plotly-plot .modebar {
             display: flex !important;
             flex-direction: row !important;
-            background: rgba(255, 255, 255, 0.9) !important;
+            background: rgba(255,255,255,0.9) !important;
             border-radius: 4px !important;
         }
 
@@ -140,11 +139,11 @@
             display: inline-flex !important;
             flex-direction: row !important;
         }
-
+        
         .js-plotly-plot .modebar-btn {
             opacity: 0.6;
         }
-
+        
         .js-plotly-plot .modebar-btn:hover {
             opacity: 1;
         }
@@ -162,23 +161,20 @@
             <!-- Checkboxes hidden - always enabled by default -->
             <div class="flex items-center gap-6" style="display: none;">
                 <!-- 4C Docker Mode Toggle -->
-                <div
-                    class="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg border border-gray-200 relative group">
+                <div class="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg border border-gray-200 relative group">
                     <label class="flex items-center gap-2 cursor-pointer select-none">
                         <input type="checkbox" v-model="useDocker" :disabled="training" class="w-4 h-4 accent-blue-600">
                         <span class="text-sm font-medium text-gray-700">4C Solver (Cloud)</span>
                     </label>
                     <span class="text-gray-400 cursor-help" title="Info">ⓘ</span>
                     <!-- Tooltip -->
-                    <div
-                        class="absolute top-full right-0 mt-2 w-56 p-2 bg-gray-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
+                    <div class="absolute top-full right-0 mt-2 w-56 p-2 bg-gray-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
                         <p>Runs 4C FEM on cloud server. Slower but physics-accurate. Enables YAML downloads.</p>
                     </div>
                 </div>
 
                 <!-- RL Toggle -->
-                <div
-                    class="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg border border-gray-200 relative group">
+                <div class="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg border border-gray-200 relative group">
                     <label class="flex items-center gap-2 cursor-pointer select-none">
                         <input type="checkbox" v-model="useRealRL" :disabled="training"
                             class="w-4 h-4 accent-green-600">
@@ -186,8 +182,7 @@
                     </label>
                     <span class="text-gray-400 cursor-help" title="Info">ⓘ</span>
                     <!-- Tooltip -->
-                    <div
-                        class="absolute top-full right-0 mt-2 w-56 p-2 bg-gray-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
+                    <div class="absolute top-full right-0 mt-2 w-56 p-2 bg-gray-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
                         <p>PPO neural network training on backend. Uses Stable Baselines3.</p>
                     </div>
                 </div>
@@ -280,7 +275,7 @@
         <!-- Bottom Row: Training (full width) -->
         <div class="card p-4">
             <h2 class="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">RL Training</h2>
-
+            
             <!-- Controls & Stats in one row -->
             <div class="flex items-center gap-4 mb-4 pb-4 border-b border-gray-100 relative">
                 <div class="flex items-center gap-2 bg-gray-50 rounded px-3 py-1">
@@ -295,10 +290,11 @@
                     Stop
                 </button>
                 <button @click="resetEnv" :disabled="training" class="btn btn-secondary">Reset</button>
-
+                
                 <!-- Download Training Files button (shows YAML files by step) -->
-                <button v-if="(useDocker || useRealRL) && generatedFiles.length > 0"
-                    @click="showDownloads = !showDownloads" class="btn btn-secondary text-xs">
+                <button v-if="(useDocker || useRealRL) && generatedFiles.length > 0" 
+                        @click="showDownloads = !showDownloads" 
+                        class="btn btn-secondary text-xs">
                     📥 YAML Files ({{ generatedFiles.length }})
                 </button>
 
@@ -318,8 +314,7 @@
                 <div class="flex-1"></div>
 
                 <!-- Download Panel (shown when showDownloads is true) -->
-                <div v-if="showDownloads"
-                    class="absolute right-0 top-full mt-2 bg-white rounded-lg shadow-xl border p-3 z-50 w-80 max-h-96 overflow-y-auto">
+                <div v-if="showDownloads" class="absolute right-0 top-full mt-2 bg-white rounded-lg shadow-xl border p-3 z-50 w-80 max-h-96 overflow-y-auto">
                     <div class="flex justify-between items-center mb-2">
                         <span class="font-semibold text-sm">Training YAML Files (by Step)</span>
                         <button @click="showDownloads = false" class="text-gray-400 hover:text-gray-600">✕</button>
@@ -330,31 +325,31 @@
                     <div v-for="file in generatedFiles" :key="file.step" class="border-b py-2 last:border-b-0">
                         <div class="flex justify-between items-center mb-1">
                             <span class="text-sm font-semibold text-gray-800">Step {{ file.step }}</span>
-                            <span class="text-xs px-2 py-0.5 rounded"
-                                :class="file.reward > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">
+                            <span class="text-xs px-2 py-0.5 rounded" 
+                                  :class="file.reward > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">
                                 R={{ file.reward?.toFixed(3) }}
                             </span>
                         </div>
                         <div class="text-xs text-gray-500 mb-1">
-                            D={{ file.params?.diameter?.toFixed(1) }}mm,
+                            D={{ file.params?.diameter?.toFixed(1) }}mm, 
                             L={{ file.params?.length?.toFixed(1) }}mm,
                             t={{ file.params?.strut_thickness?.toFixed(3) }}mm,
                             n={{ file.params?.num_struts }}
                         </div>
                         <div class="flex gap-2 items-center flex-wrap">
-                            <button @click="downloadYaml(file.step)"
-                                class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded">
+                            <button @click="downloadYaml(file.step)" 
+                                    class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded">
                                 📄 YAML
                             </button>
-                            <button v-if="file.has_vtu" @click="downloadVtu(file.step)"
-                                class="text-xs bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded">
+                            <button v-if="file.has_vtu" @click="downloadVtu(file.step)" 
+                                    class="text-xs bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded">
                                 🔷 VTU
                             </button>
                             <span v-if="!file.has_vtu" class="text-xs text-gray-300">No VTU</span>
                         </div>
                     </div>
                 </div>
-
+                
                 <!-- Stats inline -->
                 <div class="flex gap-6 text-center">
                     <div>
@@ -379,13 +374,11 @@
                 <div class="mb-4">
                     <div class="text-xs text-gray-500 mb-1 uppercase flex items-center gap-2">
                         Reward Evolution
-                        <span v-if="(useDocker || useRealRL) && rewardHistory.length > 0"
-                            class="text-gray-400 font-normal normal-case">
+                        <span v-if="(useDocker || useRealRL) && rewardHistory.length > 0" class="text-gray-400 font-normal normal-case">
                             (click points to download)
                         </span>
                     </div>
-                    <div id="reward-chart" style="height: 200px;"
-                        :style="{ cursor: (useDocker || useRealRL) ? 'pointer' : 'default' }"></div>
+                    <div id="reward-chart" style="height: 200px;" :style="{ cursor: (useDocker || useRealRL) ? 'pointer' : 'default' }"></div>
                 </div>
 
                 <!-- Stress Chart -->
@@ -461,17 +454,17 @@
         </div>
 
         <!-- Webviewer removed - caused 404 errors -->
-
+        
         <!-- Download Modal for Training Steps -->
-        <div v-if="downloadModal.show"
-            class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50"
-            @click.self="closeDownloadModal">
+        <div v-if="downloadModal.show" 
+             class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50"
+             @click.self="closeDownloadModal">
             <div class="bg-white border border-gray-300 rounded p-4 w-80 shadow-lg">
                 <div class="flex justify-between items-center mb-3 pb-2 border-b">
                     <span class="font-semibold text-gray-800">Step {{ downloadModal.step }}</span>
                     <button @click="closeDownloadModal" class="text-gray-400 hover:text-gray-600">&times;</button>
                 </div>
-
+                
                 <!-- Metrics Table -->
                 <table class="w-full text-sm mb-3">
                     <tr class="border-b">
@@ -488,28 +481,25 @@
                     </tr>
                     <tr class="border-b">
                         <td class="py-1 text-gray-500">Diameter</td>
-                        <td class="py-1 text-right font-mono">{{ downloadModal.params.diameter?.toFixed(2) || '-' }} mm
-                        </td>
+                        <td class="py-1 text-right font-mono">{{ downloadModal.params.diameter?.toFixed(2) || '-' }} mm</td>
                     </tr>
                     <tr class="border-b">
                         <td class="py-1 text-gray-500">Length</td>
-                        <td class="py-1 text-right font-mono">{{ downloadModal.params.length?.toFixed(1) || '-' }} mm
-                        </td>
+                        <td class="py-1 text-right font-mono">{{ downloadModal.params.length?.toFixed(1) || '-' }} mm</td>
                     </tr>
                     <tr class="border-b">
                         <td class="py-1 text-gray-500">Strut thickness</td>
-                        <td class="py-1 text-right font-mono">{{ downloadModal.params.strut_thickness?.toFixed(3) || '-'
-                            }} mm</td>
+                        <td class="py-1 text-right font-mono">{{ downloadModal.params.strut_thickness?.toFixed(3) || '-' }} mm</td>
                     </tr>
                     <tr>
                         <td class="py-1 text-gray-500">Strut count</td>
                         <td class="py-1 text-right font-mono">{{ downloadModal.params.num_struts || '-' }}</td>
                     </tr>
                 </table>
-
+                
                 <!-- Download Button -->
                 <button @click="downloadBothFiles(downloadModal.step)"
-                    class="w-full bg-gray-800 text-white py-2 rounded text-sm font-medium hover:bg-gray-700">
+                        class="w-full bg-gray-800 text-white py-2 rounded text-sm font-medium hover:bg-gray-700">
                     Download YAML + VTU
                 </button>
             </div>
@@ -537,7 +527,7 @@
                 const displacementHistory = ref([]);
                 const rewardHistory = ref([]);
                 const paramsHistory = ref([]);  // Store params for each logged step
-
+                
                 // Computed: Use last reward from backend history if available, else 0
                 const displayedReward = computed(() => {
                     if (training.value && rewardHistory.value.length > 0) {
@@ -553,7 +543,7 @@
                         return 0;
                     }
                 });
-
+                
                 // Computed: Display stress from training results, or 0 if no training
                 const displayedStress = computed(() => {
                     if (training.value && stressHistory.value.length > 0) {
@@ -564,7 +554,7 @@
                         return 0;
                     }
                 });
-
+                
                 // Computed: Display displacement from training results, or calculated value if no training
                 const displayedDisplacement = computed(() => {
                     if (training.value && displacementHistory.value.length > 0) {
@@ -600,16 +590,16 @@
                 // 4C Docker mode state (uses Railway cloud API)
                 const useDocker = ref(true);
                 const dockerAvailable = ref(true);
-
+                
                 // Track if user has interacted with params (for showing 0 displacement on start/reset)
                 const hasInteracted = ref(false);
                 const show4CViewer = ref(true);
                 const fourcStatus = ref('checking'); // 'checking', 'available', 'unavailable'
-
+                
                 // Generated files for download
                 const generatedFiles = ref([]);
                 const showDownloads = ref(false);
-
+                
                 // Download modal state (for curve click downloads)
                 const downloadModal = ref({
                     show: false,
@@ -620,7 +610,7 @@
                     params: {},
                     loading: false
                 });
-
+                
                 // Show download modal for a training step
                 async function showDownloadModal(step, reward) {
                     // Use local data from training arrays (step is 1-indexed, arrays are 0-indexed)
@@ -630,7 +620,7 @@
                     downloadModal.value.reward = rewardHistory.value[idx] ?? reward ?? 0;
                     downloadModal.value.stress = stressHistory.value[idx] ?? 0;
                     downloadModal.value.displacement = displacementHistory.value[idx] ?? 0;
-
+                    
                     // Use local params history first (most reliable)
                     if (paramsHistory.value[idx]) {
                         downloadModal.value.params = paramsHistory.value[idx];
@@ -654,7 +644,7 @@
                         downloadModal.value.params = {};
                     }
                 }
-
+                
                 // Download both YAML and VTU files
                 function downloadBothFiles(step) {
                     // Download YAML
@@ -662,7 +652,7 @@
                     yamlLink.href = `${backendUrl}/training-yaml/${step}`;
                     yamlLink.download = `step_${step}.4C.yaml`;
                     yamlLink.click();
-
+                    
                     // Download VTU after short delay
                     setTimeout(() => {
                         const vtuLink = document.createElement('a');
@@ -670,26 +660,26 @@
                         vtuLink.download = `step_${step}.vtu`;
                         vtuLink.click();
                     }, 300);
-
+                    
                     downloadModal.value.show = false;
                 }
-
+                
                 // Download YAML for a training step
                 function downloadTrainingYaml(step) {
                     window.location.href = `${backendUrl}/training-yaml/${step}`;
                     downloadModal.value.show = false;
                 }
-
+                
                 // Download VTU mesh for a training step
                 function downloadTrainingVtu(step) {
                     window.location.href = `${backendUrl}/training-vtu/${step}`;
                 }
-
+                
                 // Close download modal
                 function closeDownloadModal() {
                     downloadModal.value.show = false;
                 }
-
+                
                 // Check 4C availability on the server
                 async function check4CStatus() {
                     fourcStatus.value = 'checking';
@@ -699,13 +689,13 @@
                             const data = await res.json();
                             // Check both fourc_available AND fourc_can_execute
                             // Also check for missing libraries in debug_info
-                            const hasMissingLibs = data.debug_info?.missing_libs &&
-                                data.debug_info.missing_libs !== 'none' &&
-                                data.debug_info.missing_libs.length > 0;
+                            const hasMissingLibs = data.debug_info?.missing_libs && 
+                                                   data.debug_info.missing_libs !== 'none' &&
+                                                   data.debug_info.missing_libs.length > 0;
                             const canRun = data.fourc_available && data.fourc_can_execute && !hasMissingLibs;
-
+                            
                             fourcStatus.value = canRun ? 'available' : 'unavailable';
-
+                            
                             if (!canRun) {
                                 console.warn('4C not fully available:', {
                                     fourc_available: data.fourc_available,
@@ -722,7 +712,7 @@
                         fourcStatus.value = 'unavailable';
                     }
                 }
-
+                
                 // Fetch list of training files for download (by step number)
                 async function fetchGeneratedFiles() {
                     try {
@@ -735,17 +725,17 @@
                         console.error('Failed to fetch training files:', e);
                     }
                 }
-
+                
                 // Download YAML file by step number
                 function downloadYaml(step) {
                     window.location.href = `${backendUrl}/training-yaml/${step}`;
                 }
-
+                
                 // Download VTU mesh file by step number
                 function downloadVtu(step) {
                     window.location.href = `${backendUrl}/training-vtu/${step}`;
                 }
-
+                
                 // Format timestamp for display
                 function formatTime(timestamp) {
                     if (!timestamp) return '';
@@ -840,15 +830,15 @@
                                     const prevLength = rewardHistory.value.length;
                                     // Always sync with backend - it's the source of truth
                                     rewardHistory.value = data.rewards;
-
+                                    
                                     // Track params for each new data point (for download modal)
                                     if (data.current_params && data.rewards.length > prevLength) {
                                         // New data points added - store current params for each new point
                                         while (paramsHistory.value.length < data.rewards.length) {
-                                            paramsHistory.value.push({ ...data.current_params });
+                                            paramsHistory.value.push({...data.current_params});
                                         }
                                     }
-
+                                    
                                     // Update currentReward to match the last reward from backend
                                     // This ensures dashboard and curve show the same value
                                     if (data.rewards.length > 0) {
@@ -864,7 +854,7 @@
                                 if (data.episode_rewards !== undefined) {
                                     episodeRewards.value = data.episode_rewards;
                                 }
-
+                                
                                 // Ensure progress only goes forward (never backward)
                                 if (data.progress !== undefined) {
                                     const newProgress = Math.min(1.0, Math.max(0.0, data.progress));
@@ -873,7 +863,7 @@
                                     }
                                     // If progress went backward, keep previous (might be backend reset)
                                 }
-
+                                
                                 // Fetch training files periodically (for download list)
                                 if ((useDocker.value || useRealRL.value) && steps.value % 10 === 0) {
                                     fetchGeneratedFiles();
@@ -903,7 +893,7 @@
                         } catch (e) {
                             console.error('Polling error:', e);
                         }
-                    }, 2000);
+                    }, 200);
                 }
 
                 function stopPolling() {
@@ -985,19 +975,19 @@
                             const res = await fetch(`${backendUrl}/start`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
+                                body: JSON.stringify({ 
                                     steps: trainSteps.value,
                                     use_docker: useDocker.value  // Pass 4C mode flag to backend
                                 })
                             });
                             const data = await res.json();
-
+                            
                             if (data.status === 'error') {
                                 // Server returned an error (e.g., 4C not available)
                                 alert('❌ Training Error:\n\n' + data.message + '\n\n' + (data.suggestion || ''));
                                 return;
                             }
-
+                            
                             if (data.status === 'started') {
                                 console.log('Training started in mode:', data.mode);
                                 // Clear ALL history before starting
@@ -1135,7 +1125,7 @@
                         clearInterval(trainingInterval);
                         trainingInterval = null;
                     }
-
+                    
                     // Reset backend if we were using it
                     if (useRealRL.value || useDocker.value) {
                         try {
@@ -1145,7 +1135,7 @@
                             console.error('Failed to reset backend:', e);
                         }
                     }
-
+                    
                     // Reset local state
                     // Set params first, then reset interaction flag AFTER to avoid watch setting it true
                     params.value = { diameter: 10.0, length: 20.0, strutThickness: 0.12, numStruts: 12, crownHeight: 1.0 };
@@ -1259,7 +1249,7 @@
                             // First show the container, then render charts after layout settles
                             comparing.value = false;
                             comparisonDone.value = true;
-
+                            
                             // Wait for Vue to update DOM and browser to calculate layout
                             setTimeout(() => {
                                 updateComparisonCharts();
@@ -1450,13 +1440,13 @@
                     // This ensures steps counter, progress bar, and curve x-axis all match
                     const rewardDataLength = rewardHistory.value.length;
                     const totalStepsNow = rewardDataLength || steps.value || 0;
-
+                    
                     // For empty charts, show axis range based on trainSteps
                     const xAxisMax = totalStepsNow > 0 ? totalStepsNow + 10 : trainSteps.value;
-
+                    
                     // No padding needed - use actual data length
                     let paddedRewards = [...rewardHistory.value];
-
+                    
                     // Check if backend mode (4C or RL enabled)
                     const isBackendMode = useDocker.value || useRealRL.value;
 
@@ -1469,20 +1459,20 @@
                         line: { color: '#e5e7eb', width: 1 },
                         hoverinfo: 'skip'
                     }];
-
+                    
                     if (totalStepsNow > 0) {
                         traces.push({
                             x: Array.from({ length: totalStepsNow }, (_, i) => i + 1),
                             y: paddedRewards,
-                            type: 'scatter',
+                            type: 'scatter', 
                             mode: isBackendMode ? 'lines+markers' : 'lines',
                             line: { color: '#2563eb', width: 1.5 },
-                            marker: isBackendMode ? {
-                                size: 5,
+                            marker: isBackendMode ? { 
+                                size: 5, 
                                 color: paddedRewards.map(r => r > 0 ? '#22c55e' : '#ef4444'),
                                 opacity: 0.6
                             } : undefined,
-                            fill: 'tozeroy',
+                            fill: 'tozeroy', 
                             fillcolor: 'rgba(37, 99, 235, 0.1)',
                             hovertemplate: '<b>Step %{x}</b><br>Reward: %{y:.3f}<extra></extra>'
                         });
@@ -1503,13 +1493,13 @@
 
                     const rewardYAxis = { title: 'Reward', gridcolor: '#f0f0f0' };
                     if (totalStepsNow === 0) rewardYAxis.range = [-1, 0.5];
-
+                    
                     Plotly.react('reward-chart', traces, {
                         margin: { l: 50, r: 10, t: 30, b: 35 },
-                        xaxis: {
-                            title: 'Step',
-                            gridcolor: '#f0f0f0',
-                            range: [0, xAxisMax]
+                        xaxis: { 
+                            title: 'Step', 
+                            gridcolor: '#f0f0f0', 
+                            range: [0, xAxisMax] 
                         },
                         yaxis: rewardYAxis,
                         paper_bgcolor: 'white', plot_bgcolor: 'white',
@@ -1517,13 +1507,13 @@
                         hovermode: 'closest',
                         modebar: { orientation: 'h', bgcolor: 'rgba(255,255,255,0.8)' }
                     }, { responsive: true, displayModeBar: true, modeBarButtonsToRemove: ['lasso2d', 'select2d'] });
-
+                    
                     // Add click handler only in backend mode (when markers are shown)
                     const rewardChart = document.getElementById('reward-chart');
                     rewardChart.removeAllListeners?.('plotly_click');  // Remove old listeners
-
+                    
                     if (isBackendMode && totalStepsNow > 0) {
-                        rewardChart.on('plotly_click', async function (data) {
+                        rewardChart.on('plotly_click', async function(data) {
                             if (data.points && data.points.length > 0) {
                                 const point = data.points[0];
                                 const step = point.x;
@@ -1546,10 +1536,10 @@
                         // Trim if somehow longer
                         paddedStress = paddedStress.slice(0, totalStepsNow);
                     }
-
+                    
                     const stressYAxis = { title: 'MPa', gridcolor: '#f0f0f0' };
                     if (totalStepsNow === 0) stressYAxis.range = [0, 200];
-
+                    
                     // Build stress traces - always include threshold line for axes visibility
                     const stressTraces = [{
                         x: [0, xAxisMax],
@@ -1558,7 +1548,7 @@
                         line: { color: '#9ca3af', width: 1, dash: 'dot' },
                         hoverinfo: 'skip'
                     }];
-
+                    
                     if (totalStepsNow > 0) {
                         stressTraces.unshift({
                             x: Array.from({ length: totalStepsNow }, (_, i) => i + 1),
@@ -1567,7 +1557,7 @@
                             line: { color: '#dc2626', width: 1.5 }
                         });
                     }
-
+                    
                     Plotly.react('stress-chart', stressTraces, {
                         margin: { l: 50, r: 10, t: 30, b: 35 },
                         xaxis: { title: 'Step', gridcolor: '#f0f0f0', range: [0, xAxisMax] },
@@ -1581,7 +1571,7 @@
                 watch(params, () => {
                     // Mark that user has interacted with params
                     hasInteracted.value = true;
-
+                    
                     // When not training AND not using RL/4C (mockup mode), update metrics
                     if (!training.value && !useRealRL.value && !useDocker.value) {
                         computeMetrics(); // Calculate displacement for mockup mode
@@ -1591,7 +1581,7 @@
                         updateStent3D();
                     }
                 }, { deep: true });
-
+                
                 // Update charts when checkboxes change (show/hide markers)
                 watch([useDocker, useRealRL], () => {
                     if (rewardHistory.value.length > 0) {
