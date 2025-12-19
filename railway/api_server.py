@@ -374,7 +374,8 @@ try:
     from mesh_generator import (
         StentGeometry,
         generate_cylindrical_stent_mesh,
-        write_4c_geometry
+        write_4c_geometry,
+        write_vtu_file
     )
     from vtu_parser import parse_vtu_file, find_latest_vtu
     MESH_TOOLS_AVAILABLE = True
@@ -421,27 +422,55 @@ def check_mesh_tools():
 
 
 def generate_4c_yaml(params: StentParams, output_path: Path):
-    """Generate complete 4C YAML input file with real mesh."""
+    """Generate complete 4C YAML input file with VTU mesh file."""
     
     if not MESH_TOOLS_AVAILABLE:
         # Fallback to simple YAML without mesh
-        yaml_content = f"""# Simplified 4C input (mesh tools not available)
-PROBLEM_SIZE: 3
-PROBLEM_TYPE: Structure
+        yaml_content = f"""TITLE: Stent simulation - diameter={params.diameter}mm, length={params.length}mm
+PROBLEM TYPE:
+  PROBLEMTYPE: Structure
 
-STRUCTURAL:
-  NEWMARK:
-    TIMESTEP: 0.001
-    NUMSTEP: 50
-    
+SOLVER 1:
+  SOLVER: "Superlu"
+  NAME: "Structure_Solver"
+
+IO:
+  OUTPUT_SPRING: true
+  STRUCT_STRESS: "Cauchy"
+  STRUCT_STRAIN: "GL"
+  VERBOSITY: "Standard"
+  WRITE_INITIAL_STATE: false
+
+IO/RUNTIME VTK OUTPUT:
+  INTERVAL_STEPS: 1
+  OUTPUT_DATA_FORMAT: binary
+
+IO/RUNTIME VTK OUTPUT/STRUCTURE:
+  OUTPUT_STRUCTURE: true
+  DISPLACEMENT: true
+  STRESS_STRAIN: true
+  GAUSS_POINT_DATA_OUTPUT_TYPE: nodes
+
+STRUCTURAL DYNAMIC:
+  INT_STRATEGY: "Standard"
+  DYNAMICTYPE: "Statics"
+  TIMESTEP: 1.0
+  NUMSTEP: 1
+  MAXTIME: 1.0
+  TOLDISP: 1e-06
+  TOLRES: 1e-06
+  LOADLIN: true
+  LINEAR_SOLVER: 1
+
 MATERIALS:
-  MAT 1:
-    TYPE: ElastHyper
-    YOUNG: 200000.0
-    NUE: 0.3
-    DENS: 6.45e-9
+  - MAT: 1
+    MAT_ElastHyper:
+      ELAST_CoupNeoHooke:
+        YOUNG: 200000.0
+        NUE: 0.3
+        DENS: 7.8e-9
 
-# Mesh would be here
+# Mesh tools not available - using placeholder
 """
         output_path.write_text(yaml_content)
         return
@@ -461,70 +490,89 @@ MATERIALS:
         n_radial=2
     )
     
-    # Write complete 4C YAML
-    with open(output_path, 'w') as f:
-        f.write("""# 4C Stent Simulation with Real Mesh
-PROBLEM_SIZE: 3
-PROBLEM_TYPE: Structure
+    # Generate VTU file
+    vtu_path = output_path.parent / f"{output_path.stem}_mesh.vtu"
+    import numpy as np
+    write_vtu_file(
+        nodes,
+        elements,
+        str(vtu_path),
+        fixed_nodes=np.array(fixed_nodes),
+        loaded_nodes=np.array(loaded_nodes)
+    )
+    
+    # Write complete 4C YAML with VTU reference
+    vtu_filename = vtu_path.name
+    pressure = params.diameter * 0.1  # Radial pressure in MPa
+    
+    yaml_content = f"""TITLE: Stent simulation - diameter={params.diameter}mm, length={params.length}mm
+PROBLEM TYPE:
+  PROBLEMTYPE: Structure
 
-STRUCTURAL:
-  NEWMARK:
-    TIMESTEP: 0.001
-    NUMSTEP: 50
-    LOADSTEP_SIZE: 0.02
+SOLVER 1:
+  SOLVER: "Superlu"
+  NAME: "Structure_Solver"
+
+IO:
+  OUTPUT_SPRING: true
+  STRUCT_STRESS: "Cauchy"
+  STRUCT_STRAIN: "GL"
+  VERBOSITY: "Standard"
+  WRITE_INITIAL_STATE: false
+
+IO/RUNTIME VTK OUTPUT:
+  INTERVAL_STEPS: 1
+  OUTPUT_DATA_FORMAT: binary
+
+IO/RUNTIME VTK OUTPUT/STRUCTURE:
+  OUTPUT_STRUCTURE: true
+  DISPLACEMENT: true
+  STRESS_STRAIN: true
+  GAUSS_POINT_DATA_OUTPUT_TYPE: nodes
+
+STRUCTURAL DYNAMIC:
+  INT_STRATEGY: "Standard"
+  DYNAMICTYPE: "Statics"
+  TIMESTEP: 1.0
+  NUMSTEP: 1
+  MAXTIME: 1.0
+  TOLDISP: 1e-06
+  TOLRES: 1e-06
+  LOADLIN: true
+  LINEAR_SOLVER: 1
+  KINEM: nonlinear
 
 MATERIALS:
-  MAT 1:
-    TYPE: ElastHyper
-    YOUNG: 200000.0  # MPa (NiTi)
-    NUE: 0.3
-    DENS: 6.45e-9  # kg/mm^3
+  - MAT: 1
+    MAT_ElastHyper:
+      ELAST_CoupNeoHooke:
+        YOUNG: 200000.0
+        NUE: 0.3
+        DENS: 7.8e-9
 
-""")
-        
-        # Write geometry
-        f.write("GEOMETRY:\n")
-        f.write("  NODES:\n")
-        for i, node in enumerate(nodes):
-            f.write(f"    - ID: {i+1}, COORDS: [{node[0]:.6f}, {node[1]:.6f}, {node[2]:.6f}]\n")
-        
-        f.write("\n  ELEMENTS:\n")
-        for i, elem in enumerate(elements):
-            node_ids = ", ".join(str(n+1) for n in elem)
-            f.write(f"    - ID: {i+1}, TYPE: hex8, NODES: [{node_ids}]\n")
-        
-        f.write("\n  ELEMENT_BLOCKS:\n")
-        f.write("    - ID: 1\n")
-        f.write(f"      ELEMENTS: [1-{len(elements)}]\n")
-        f.write("      MATERIAL: 1\n")
-        
-        f.write("\n  NODE_SETS:\n")
-        f.write("    - ID: 1, NAME: fixed_end\n")
-        fixed_ids = ", ".join(str(n+1) for n in fixed_nodes)
-        f.write(f"      NODES: [{fixed_ids}]\n")
-        f.write("    - ID: 2, NAME: loaded_surface\n")
-        loaded_ids = ", ".join(str(n+1) for n in loaded_nodes)
-        f.write(f"      NODES: [{loaded_ids}]\n")
-        
-        # Boundary conditions
-        pressure = params.diameter * 0.1  # Radial pressure
-        f.write(f"""
-BOUNDARY_CONDITIONS:
-  DIRICHLET:
-    - NODE_SETS: [1]
-      DOF: [1, 2, 3]
-      VALUE: 0.0
-  
-  NEUMANN:
-    - NODE_SETS: [2]
-      DOF: [2]
-      VALUE: {pressure}
+STRUCTURE GEOMETRY:
+  FILE: {vtu_filename}
+  ELEMENT_BLOCKS:
+    - ID: 1
+      SOLID:
+        HEX8:
+          MAT: 1
 
-OUTPUT:
-  VTK:
-    INTERVAL: 10
-    FIELDS: ['stress', 'displacement', 'strain']
-""")
+DESIGN POINT DIRICH CONDITIONS:
+  - ID: 1
+    ENTITY_TYPE: node_set_id
+    ENTITY_ID: 1
+    DOF: [1, 2, 3]
+    VALUE: 0.0
+
+DESIGN POINT NEUMANN CONDITIONS:
+  - ID: 1
+    ENTITY_TYPE: node_set_id
+    ENTITY_ID: 2
+    DOF: 2
+    VALUE: {pressure}
+"""
+    output_path.write_text(yaml_content)
 
 
 def run_real_4c_simulation(params: StentParams):
@@ -592,6 +640,18 @@ def run_real_4c_simulation(params: StentParams):
             else:
                 print("No VTU files found - 4C may not have output results")
         
+        # Read YAML and VTU content for storage
+        yaml_content = None
+        vtu_content = None
+        try:
+            if yaml_path.exists():
+                yaml_content = yaml_path.read_bytes()
+            vtu_path = work_dir / f"{yaml_path.stem}_mesh.vtu"
+            if vtu_path.exists():
+                vtu_content = vtu_path.read_bytes()
+        except Exception as e:
+            print(f"Warning: Could not read YAML/VTU for storage: {e}")
+        
         # Return results
         return {
             "success": True,
@@ -604,9 +664,11 @@ def run_real_4c_simulation(params: StentParams):
                 "converged": result.converged,
                 "source": "real_4c_fem" if max_stress > 0 else "real_4c_no_results",
                 "num_iterations": result.num_iterations,
-                "mesh_elements": len(elements) if MESH_TOOLS_AVAILABLE else 0
+                "mesh_elements": 0  # Mesh count not available here
             },
-            "metadata": result.metadata
+            "metadata": result.metadata,
+            "yaml_content": yaml_content,
+            "vtu_content": vtu_content
         }
         
     except Exception as e:
