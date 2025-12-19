@@ -1065,6 +1065,19 @@ MATERIALS:
         out_dir_style = work_dir / output_name
         out_dir_files = _list_files(out_dir_style) if out_dir_style.exists() else []
 
+        # 4C runtime VTK output commonly goes into "<output_name>-vtk-files/"
+        vtk_dir_style = work_dir / f"{output_name}-vtk-files"
+        vtk_dir_files = _list_files(vtk_dir_style) if vtk_dir_style.exists() else []
+        vtk_dir_sample = []
+        try:
+            if vtk_dir_style.exists():
+                # Include a small recursive sample so we can see whether VTU/VTK exist
+                for p in sorted(vtk_dir_style.rglob("*"))[:50]:
+                    if p.is_file():
+                        vtk_dir_sample.append(str(p.relative_to(work_dir)))
+        except Exception:
+            vtk_dir_sample = []
+
         # Prefix-style outputs in work_dir (e.g., test_output*.vtu/.vtk/.pvtu/.pvd/.log)
         prefix_hits = []
         try:
@@ -1091,6 +1104,9 @@ MATERIALS:
             "output_name": output_name,
             "output_name_dir": str(out_dir_style),
             "output_name_dir_files": out_dir_files,
+            "vtk_files_dir": str(vtk_dir_style),
+            "vtk_files_dir_files": vtk_dir_files,
+            "vtk_files_dir_sample": vtk_dir_sample,
             "output_prefix_hits": prefix_hits,
             "command": " ".join(cmd),
             "fourc_binary": fourc_bin,
