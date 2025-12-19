@@ -616,6 +616,7 @@ DESIGN SURF NEUMANN CONDITIONS:
     # If 4C fails to find surface 2, we might need to revert to point logs but fix the source code.
     # Let's try the corrected syntax first.
     NUMDOF: 3
+    ENTITY_TYPE: node_set_id
     ONOFF: [1, 0, 0]
     VAL: [{pressure}, 0.0, 0.0]
     FUNCT: [0, 0, 0]
@@ -643,6 +644,7 @@ DESIGN SURF DIRICH CONDITIONS:
 DESIGN SURF NEUMANN CONDITIONS:
   - E: 2
     NUMDOF: 3
+    ENTITY_TYPE: node_set_id
     ONOFF: [1, 0, 0]
     VAL: [{pressure}, 0.0, 0.0]
     FUNCT: [0, 0, 0]
