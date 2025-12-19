@@ -665,24 +665,38 @@ def run_real_4c_simulation(params: StentParams):
         except Exception as e:
             print(f"Warning: Could not read YAML/VTU for storage: {e}")
         
-        # Return results
-        return {
+        # Choose best available quantities (parsed VTU preferred, otherwise simulator placeholders)
+        best_stress = float(max_stress) if max_stress > 0 else float(result.max_von_mises_stress)
+        best_disp = float(max_disp) if max_disp > 0 else float(result.max_displacement)
+        best_strain = float(max_strain)
+
+        # Return results (IMPORTANT: include top-level keys that the RL env expects)
+        payload = {
             "success": True,
             "simulation_id": f"4c_{int(time.time()*1000)}",
             "status": "completed",
+
+            # Top-level (consumed by SimpleStentEnv.step)
+            "max_von_mises_stress": best_stress,
+            "max_displacement": best_disp,
+            "max_principal_strain": best_strain,
+
+            # Structured detail (nice for UI / debugging)
             "result": {
-                "max_stress": float(max_stress) if max_stress > 0 else float(result.max_von_mises_stress),
-                "max_displacement": float(max_disp) if max_disp > 0 else float(result.max_displacement),
-                "max_strain": float(max_strain),
-                "converged": result.converged,
-                "source": "real_4c_fem" if max_stress > 0 else "real_4c_no_results",
-                "num_iterations": result.num_iterations,
-                "mesh_elements": 0  # Mesh count not available here
+                "max_stress": best_stress,
+                "max_displacement": best_disp,
+                "max_strain": best_strain,
+                "converged": bool(result.converged),
+                "source": "real_4c_fem" if max_stress > 0 else "real_4c_no_vtu_parse",
+                "num_iterations": int(result.num_iterations),
+                "mesh_elements": 0,  # not tracked here
+                "output_directory": str(getattr(result, "output_directory", "")),
             },
-            "metadata": result.metadata,
+            "metadata": result.metadata or {},
             "yaml_content": yaml_content,
-            "vtu_content": vtu_content
+            "vtu_content": vtu_content,
         }
+        return payload
         
     except Exception as e:
         import traceback
@@ -1034,16 +1048,50 @@ MATERIALS:
             env=env
         )
         
-        # Check output files
-        output_files = list(output_dir.glob("*"))
+        # Check output files.
+        # NOTE: 4C often writes outputs next to the YAML with an output-name prefix,
+        # or into work_dir/<output_name>/..., not into work_dir/output.
+        def _list_files(p: Path):
+            try:
+                return sorted([f.name for f in p.glob("*")])
+            except Exception:
+                return []
+
+        work_files = _list_files(work_dir)
+        output_files = _list_files(output_dir)
+
+        # Also check common 4C output locations for this invocation
+        output_name = output_name if "output_name" in locals() else "test_output"
+        out_dir_style = work_dir / output_name
+        out_dir_files = _list_files(out_dir_style) if out_dir_style.exists() else []
+
+        # Prefix-style outputs in work_dir (e.g., test_output*.vtu/.vtk/.pvtu/.pvd/.log)
+        prefix_hits = []
+        try:
+            for ext in ("*.vtu", "*.vtk", "*.pvtu", "*.pvd", "*.log", "*.txt", "*.csv"):
+                for f in work_dir.glob(ext):
+                    if f.name.startswith(output_name):
+                        prefix_hits.append(f.name)
+            prefix_hits = sorted(set(prefix_hits))
+        except Exception:
+            prefix_hits = []
         
         return {
             "success": result.returncode == 0,
             "returncode": result.returncode,
             "stdout": result.stdout[-2000:] if result.stdout else "",
             "stderr": result.stderr[-2000:] if result.stderr else "",
-            "output_files": [f.name for f in output_files],
+            # Back-compat fields
+            "output_files": output_files,
             "output_dir": str(output_dir),
+
+            # New diagnostics (this will explain the “output_files=[] but returncode=0” situation)
+            "work_dir": str(work_dir),
+            "work_dir_files": work_files,
+            "output_name": output_name,
+            "output_name_dir": str(out_dir_style),
+            "output_name_dir_files": out_dir_files,
+            "output_prefix_hits": prefix_hits,
             "command": " ".join(cmd),
             "fourc_binary": fourc_bin,
             "binary_exists": Path(fourc_bin).exists(),
