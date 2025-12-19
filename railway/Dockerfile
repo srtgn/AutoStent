@@ -40,7 +40,8 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     numpy \
     stable-baselines3 \
     gymnasium \
-    pyvista
+    pyvista \
+    meshio
 
 # Copy autostent package (for 4C interface)
 COPY autostent/ ./autostent/

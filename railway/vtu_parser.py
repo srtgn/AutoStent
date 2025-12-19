@@ -15,6 +15,13 @@ except ImportError:
     PYVISTA_AVAILABLE = False
     print("WARNING: PyVista not available - VTU parsing disabled")
 
+try:
+    import meshio
+    MESHIO_AVAILABLE = True
+except ImportError:
+    MESHIO_AVAILABLE = False
+    # Don't print loudly; meshio is optional
+
 
 def compute_von_mises_stress(stress_tensor: np.ndarray) -> np.ndarray:
     """
@@ -102,51 +109,81 @@ def parse_vtu_file(vtu_path: Path) -> Tuple[float, float, float, bool]:
         max_principal_strain: Maximum principal strain
         success: Whether parsing succeeded
     """
-    if not PYVISTA_AVAILABLE:
-        print("PyVista not available - returning placeholder values")
-        return 0.0, 0.0, 0.0, False
-    
     try:
-        # Read VTU file
-        mesh = pv.read(str(vtu_path))
+        # Prefer PyVista when available, but fall back to meshio (headless-friendly)
+        if PYVISTA_AVAILABLE:
+            mesh = pv.read(str(vtu_path))
+            point_data = dict(mesh.point_data)
+            cell_data = dict(mesh.cell_data) if hasattr(mesh, "cell_data") else {}
+        else:
+            if not MESHIO_AVAILABLE:
+                print("Neither PyVista nor meshio available - cannot parse VTU")
+                return 0.0, 0.0, 0.0, False
+            m = meshio.read(str(vtu_path))
+            point_data = m.point_data or {}
+            # meshio cell_data is dict[str, list[np.ndarray]] (one per cell block)
+            cell_data = m.cell_data or {}
+
+        # Case-insensitive lookup helper
+        pd_lower = {k.lower(): k for k in point_data.keys()}
+        cd_lower = {k.lower(): k for k in cell_data.keys()}
+
+        def _get_point_array(*names: str):
+            for n in names:
+                key = pd_lower.get(n.lower())
+                if key is not None:
+                    return np.asarray(point_data[key])
+            return None
+
+        def _get_cell_array(*names: str):
+            for n in names:
+                key = cd_lower.get(n.lower())
+                if key is not None:
+                    blocks = cell_data[key]
+                    # flatten blocks to one array if possible
+                    if isinstance(blocks, list) and blocks:
+                        try:
+                            return np.concatenate([np.asarray(b) for b in blocks], axis=0)
+                        except Exception:
+                            return np.asarray(blocks[0])
+                    return np.asarray(blocks)
+            return None
         
         # Extract stress
         max_stress = 0.0
-        if 'stress' in mesh.point_data:
-            stress_tensor = mesh.point_data['stress']
-            von_mises = compute_von_mises_stress(stress_tensor)
-            max_stress = float(np.max(von_mises))
-        elif 'cauchy' in mesh.point_data:
-            stress_tensor = mesh.point_data['cauchy']
-            von_mises = compute_von_mises_stress(stress_tensor)
-            max_stress = float(np.max(von_mises))
+        stress_tensor = _get_point_array("stress", "cauchy") or _get_cell_array("stress", "cauchy")
+        if stress_tensor is not None:
+            stress_tensor = np.asarray(stress_tensor)
+            if stress_tensor.ndim == 3 and stress_tensor.shape[1:] == (3, 3):
+                stress_tensor = stress_tensor.reshape(stress_tensor.shape[0], 9)
+            if stress_tensor.ndim == 2 and stress_tensor.shape[1] in (6, 9):
+                von_mises = compute_von_mises_stress(stress_tensor)
+                max_stress = float(np.max(von_mises))
         
         # Extract displacement
         max_disp = 0.0
-        if 'displacement' in mesh.point_data:
-            disp = mesh.point_data['displacement']
+        disp = _get_point_array("displacement", "disp", "u")
+        if disp is not None:
+            disp = np.asarray(disp)
             if disp.ndim == 1:
                 max_disp = float(np.max(np.abs(disp)))
             else:
-                disp_magnitude = np.linalg.norm(disp, axis=1)
-                max_disp = float(np.max(disp_magnitude))
-        elif 'disp' in mesh.point_data:
-            disp = mesh.point_data['disp']
-            disp_magnitude = np.linalg.norm(disp, axis=1)
-            max_disp = float(np.max(disp_magnitude))
+                max_disp = float(np.max(np.linalg.norm(disp, axis=1)))
         
         # Extract strain
         max_strain = 0.0
-        if 'strain' in mesh.point_data:
-            strain_tensor = mesh.point_data['strain']
-            principal_strain = compute_principal_strain(strain_tensor)
-            max_strain = float(np.max(principal_strain))
-        elif 'GL_strain' in mesh.point_data:
-            strain_tensor = mesh.point_data['GL_strain']
-            principal_strain = compute_principal_strain(strain_tensor)
-            max_strain = float(np.max(principal_strain))
+        strain_tensor = _get_point_array("strain", "gl_strain") or _get_cell_array("strain", "gl_strain")
+        if strain_tensor is not None:
+            strain_tensor = np.asarray(strain_tensor)
+            if strain_tensor.ndim == 3 and strain_tensor.shape[1:] == (3, 3):
+                strain_tensor = strain_tensor.reshape(strain_tensor.shape[0], 9)
+            if strain_tensor.ndim == 2 and strain_tensor.shape[1] in (6, 9):
+                principal_strain = compute_principal_strain(strain_tensor)
+                max_strain = float(np.max(principal_strain))
         
-        return max_stress, max_disp, max_strain, True
+        # We consider parsing successful if we got at least displacement or stress
+        ok = (max_disp > 0.0) or (max_stress > 0.0) or (max_strain > 0.0)
+        return max_stress, max_disp, max_strain, ok
         
     except Exception as e:
         print(f"Error parsing VTU file: {e}")
@@ -155,9 +192,15 @@ def parse_vtu_file(vtu_path: Path) -> Tuple[float, float, float, bool]:
 
 def find_latest_vtu(output_dir: Path) -> Optional[Path]:
     """Find the latest VTU file in output directory."""
-    vtu_files = sorted(output_dir.glob("*.vtu"))
-    vtk_files = sorted(output_dir.glob("*.vtk"))
-    
+    # Direct hits
+    vtu_files = list(output_dir.glob("*.vtu"))
+    vtk_files = list(output_dir.glob("*.vtk"))
+
+    # Recursive hits (4C often writes into <output_name>-vtk-files/)
+    if not vtu_files and not vtk_files:
+        vtu_files = list(output_dir.rglob("*.vtu"))
+        vtk_files = list(output_dir.rglob("*.vtk"))
+
     all_files = vtu_files + vtk_files
     if not all_files:
         return None
