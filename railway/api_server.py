@@ -540,7 +540,6 @@ STRUCTURAL DYNAMIC:
   TOLRES: 1e-06
   LOADLIN: true
   LINEAR_SOLVER: 1
-  KINEM: nonlinear
 
 MATERIALS:
   - MAT: 1
@@ -562,7 +561,6 @@ STRUCTURE GEOMETRY:
 DESIGN SURF DIRICH CONDITIONS:
   - E: 1
     ENTITY_TYPE: node_set_id
-    ENTITY_ID: 1
     NUMDOF: 3
     ONOFF: [1, 1, 1]
     VAL: [0.0, 0.0, 0.0]
@@ -571,10 +569,9 @@ DESIGN SURF DIRICH CONDITIONS:
 DESIGN SURF NEUMANN CONDITIONS:
   - E: 1
     ENTITY_TYPE: node_set_id
-    ENTITY_ID: 2
     NUMDOF: 3
-    ONOFF: [0, 1, 0]
-    VAL: [0.0, {pressure}, 0.0]
+    ONOFF: [1, 1, 0]
+    VAL: [{pressure}, {pressure}, 0.0]
     FUNCT: [0, 0, 0]
     TYPE: "orthopressure"
 """
