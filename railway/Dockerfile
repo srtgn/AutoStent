@@ -59,10 +59,11 @@ ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/home/user/4C/build:${PATH}"
 # Include common library paths where 4C dependencies might be
-ENV LD_LIBRARY_PATH="/home/user/4C/build:/usr/local/lib:/usr/lib/x86_64-linux-gnu:/usr/lib:${LD_LIBRARY_PATH}"
+# Note: Set LD_LIBRARY_PATH directly (don't reference itself)
+ENV LD_LIBRARY_PATH="/home/user/4C/build:/usr/local/lib:/usr/lib/x86_64-linux-gnu:/usr/lib"
 
 # Run as non-root user for security (use the user from 4C image)
 USER user
 
-# Run with uvicorn (use python3 explicitly)
-CMD ["python3", "-m", "uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "8080"]
+# Run with uvicorn (use PORT env var from Railway)
+CMD python3 -m uvicorn api_server:app --host 0.0.0.0 --port ${PORT:-8080}
