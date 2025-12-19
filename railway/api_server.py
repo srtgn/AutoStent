@@ -559,9 +559,16 @@ def run_real_4c_simulation(params: StentParams):
         result = fourc_sim.run_simulation(config)
         
         if not result.success:
+            error_msg = result.error_message or "4C simulation failed"
+            # Log full error for debugging
+            print(f"4C simulation failed for params {params}:")
+            print(error_msg)
+            # Truncate very long error messages for response (keep last 2000 chars)
+            if len(error_msg) > 2000:
+                error_msg = "... (truncated) ...\n" + error_msg[-2000:]
             return {
                 "success": False,
-                "error": result.error_message or "4C simulation failed",
+                "error": error_msg,
                 "log_path": str(result.log_path) if result.log_path else None,
                 "fallback_used": True
             }

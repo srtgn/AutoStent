@@ -4,6 +4,7 @@
 Handles execution of 4C FEM simulations and result parsing.
 """
 
+import os
 import subprocess
 import json
 from pathlib import Path
@@ -204,31 +205,59 @@ class FourCSimulator:
         
         # Run simulation
         try:
+            # Set up environment with LD_LIBRARY_PATH for 4C libraries
+            env = os.environ.copy()
+            if 'LD_LIBRARY_PATH' not in env or not env['LD_LIBRARY_PATH']:
+                env['LD_LIBRARY_PATH'] = '/home/user/4C/build:/usr/local/lib:/usr/lib/x86_64-linux-gnu'
+            else:
+                env['LD_LIBRARY_PATH'] = '/home/user/4C/build:/usr/local/lib:/usr/lib/x86_64-linux-gnu:' + env['LD_LIBRARY_PATH']
+            
+            # Run 4C in the same directory as the YAML file (4C expects output in same dir)
+            yaml_dir = config.yaml_input_path.parent
             result = subprocess.run(
                 cmd,
-                cwd=self.working_directory,
+                cwd=str(yaml_dir),
                 capture_output=True,
                 text=True,
                 timeout=config.timeout,
+                env=env,
             )
+            
+            # 4C creates output directory relative to YAML file location
+            # Actual output path is: yaml_dir / output_name
+            actual_output_dir = yaml_dir / output_name
             
             # Check for errors
             if result.returncode != 0:
+                # Combine stdout and stderr for comprehensive error message
+                # 4C often outputs critical errors to stdout (e.g., MPI_ABORT messages)
+                error_msg = ""
+                if result.stdout:
+                    error_msg += f"STDOUT:\n{result.stdout}\n"
+                if result.stderr:
+                    error_msg += f"STDERR:\n{result.stderr}\n"
+                if not error_msg:
+                    error_msg = f"4C simulation failed with return code {result.returncode}"
+                
+                # Log full error for debugging
+                print(f"4C simulation failed (returncode={result.returncode}):")
+                print(error_msg)
+                
                 return SimulationResult(
                     success=False,
-                    output_directory=config.output_directory,
+                    output_directory=actual_output_dir if actual_output_dir.exists() else config.output_directory,
                     max_von_mises_stress=0.0,
                     max_displacement=0.0,
                     max_principal_strain=0.0,
                     converged=False,
                     num_iterations=0,
                     residual_norm=0.0,
-                    error_message=result.stderr,
-                    log_path=config.output_directory / "fourc.log",
+                    error_message=error_msg,
+                    log_path=actual_output_dir / "fourc.log" if actual_output_dir.exists() else config.output_directory / "fourc.log",
                 )
             
-            # Parse results
-            return self._parse_results(config.output_directory)
+            # Parse results from the actual output directory created by 4C
+            return self._parse_results(actual_output_dir)
             
         except subprocess.TimeoutExpired:
             return SimulationResult(
