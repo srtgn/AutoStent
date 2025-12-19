@@ -557,20 +557,26 @@ STRUCTURE GEOMETRY:
       SOLID:
         HEX8:
           MAT: 1
+          KINEM: nonlinear
 
-DESIGN POINT DIRICH CONDITIONS:
-  - ID: 1
+DESIGN SURF DIRICH CONDITIONS:
+  - E: 1
     ENTITY_TYPE: node_set_id
     ENTITY_ID: 1
-    DOF: [1, 2, 3]
-    VALUE: 0.0
+    NUMDOF: 3
+    ONOFF: [1, 1, 1]
+    VAL: [0.0, 0.0, 0.0]
+    FUNCT: [0, 0, 0]
 
-DESIGN POINT NEUMANN CONDITIONS:
-  - ID: 1
+DESIGN SURF NEUMANN CONDITIONS:
+  - E: 1
     ENTITY_TYPE: node_set_id
     ENTITY_ID: 2
-    DOF: 2
-    VALUE: {pressure}
+    NUMDOF: 3
+    ONOFF: [0, 1, 0]
+    VAL: [0.0, {pressure}, 0.0]
+    FUNCT: [0, 0, 0]
+    TYPE: "orthopressure"
 """
     output_path.write_text(yaml_content)
 
