@@ -465,10 +465,13 @@ STRUCTURAL DYNAMIC:
 MATERIALS:
   - MAT: 1
     MAT_ElastHyper:
-      ELAST_CoupNeoHooke:
-        YOUNG: 200000.0
-        NUE: 0.3
-        DENS: 7.8e-9
+      NUMMAT: 1
+      MATIDS: [2]
+      DENS: 7.8e-9
+  - MAT: 2
+    ELAST_CoupNeoHooke:
+      YOUNG: 200000.0
+      NUE: 0.3
 
 # Mesh tools not available - using placeholder
 """
@@ -544,10 +547,13 @@ STRUCTURAL DYNAMIC:
 MATERIALS:
   - MAT: 1
     MAT_ElastHyper:
-      ELAST_CoupNeoHooke:
-        YOUNG: 200000.0
-        NUE: 0.3
-        DENS: 7.8e-9
+      NUMMAT: 1
+      MATIDS: [2]
+      DENS: 7.8e-9
+  - MAT: 2
+    ELAST_CoupNeoHooke:
+      YOUNG: 200000.0
+      NUE: 0.3
 
 STRUCTURE GEOMETRY:
   FILE: {vtu_filename}
@@ -825,6 +831,238 @@ def reset_training():
         training_state["best_reward"] = -100.0
         training_state["yaml_files"] = {}
     return {"status": "reset"}
+
+
+@app.get("/test-4c-docker")
+def test_4c_docker_direct():
+    """Test 4C binary directly (we're already in 4C Docker image, so no need for docker run)."""
+    import shutil
+    
+    print("Testing 4C binary directly (we're in 4C image)...")
+    
+    # Check if fourc binary exists
+    fourc_bin = shutil.which("fourc") or "/usr/local/bin/fourc" or "/home/user/4C/build/4C"
+    
+    # Try to find tutorial files in the image (various locations)
+    tutorial_search_dirs = [
+        "/home/user/4C/tests/input_files",
+        "/home/user/4C/tests",
+        "/home/user/tests/input_files",
+    ]
+    
+    tutorial_yaml = None
+    tutorial_vtu = None
+    found_files = []
+    
+    for search_dir in tutorial_search_dirs:
+        search_path = Path(search_dir)
+        if search_path.exists():
+            # Collect files for diagnostics
+            found_files.extend([str(f) for f in search_path.iterdir() if f.is_file()][:10])
+    
+    # Create temp directory for output
+    work_dir = Path(tempfile.mkdtemp(prefix="4c_test_"))
+    output_dir = work_dir / "output"
+    output_dir.mkdir()
+    
+    try:
+        use_generated_stent = False
+        
+        # Generate stent mesh for testing
+        if MESH_TOOLS_AVAILABLE:
+            print("Generating stent mesh for testing...")
+            try:
+                # Generate realistic stent mesh for testing
+                geometry = StentGeometry(
+                    diameter=10.0,
+                    length=20.0,
+                    strut_thickness=0.12,
+                    num_struts=12,
+                    crown_height=1.0
+                )
+                nodes, elements, fixed_nodes, loaded_nodes = generate_cylindrical_stent_mesh(
+                    geometry, n_circumferential_per_strut=4, n_radial=2
+                )
+                
+                # Write VTU file with required 4C arrays (block_id, point_sets)
+                vtu_path = work_dir / "stent_mesh.vtu"
+                write_vtu_file(
+                    nodes, elements, str(vtu_path),
+                    fixed_nodes=np.array(fixed_nodes),
+                    loaded_nodes=np.array(loaded_nodes)
+                )
+                print(f"✓ Generated VTU: {len(nodes)} nodes, {len(elements)} elements, with block_id and point_sets")
+                
+                # Create YAML referencing VTU with point_set boundary conditions
+                test_yaml = work_dir / "stent_test.4C.yaml"
+                pressure = 0.01  # Small axial load for testing
+                test_yaml.write_text(f"""TITLE: Generated stent test
+PROBLEM TYPE:
+  PROBLEMTYPE: Structure
+
+SOLVER 1:
+  SOLVER: "Superlu"
+  NAME: "Structure_Solver"
+
+IO:
+  STRUCT_STRESS: "Cauchy"
+  STRUCT_STRAIN: "GL"
+  VERBOSITY: "Standard"
+
+IO/RUNTIME VTK OUTPUT:
+  INTERVAL_STEPS: 1
+  OUTPUT_DATA_FORMAT: binary
+
+IO/RUNTIME VTK OUTPUT/STRUCTURE:
+  OUTPUT_STRUCTURE: true
+  DISPLACEMENT: true
+  STRESS_STRAIN: true
+
+STRUCTURAL DYNAMIC:
+  INT_STRATEGY: "Standard"
+  DYNAMICTYPE: "Statics"
+  TIMESTEP: 1.0
+  NUMSTEP: 1
+  MAXTIME: 1.0
+  LINEAR_SOLVER: 1
+  TOLDISP: 1e-06
+  TOLRES: 1e-06
+  LOADLIN: true
+
+MATERIALS:
+  - MAT: 1
+    MAT_ElastHyper:
+      NUMMAT: 1
+      MATIDS: [2]
+      DENS: 7.8e-9
+  - MAT: 2
+    ELAST_CoupNeoHooke:
+      YOUNG: 200000.0
+      NUE: 0.3
+
+STRUCTURE GEOMETRY:
+  FILE: stent_mesh.vtu
+  ELEMENT_BLOCKS:
+    - ID: 1
+      SOLID:
+        HEX8:
+          MAT: 1
+          KINEM: nonlinear
+
+# Boundary conditions using point_set arrays from VTU file
+# point_set_1 = fixed nodes (z=0), point_set_2 = loaded nodes (outer surface)
+# Apply simple axial loading for testing
+DESIGN POINT DIRICH CONDITIONS:
+  - E: 1
+    ENTITY_TYPE: node_set_id
+    NUMDOF: 3
+    ONOFF: [1, 1, 1]
+    VAL: [0.0, 0.0, 0.0]
+    FUNCT: [0, 0, 0]
+
+# Apply small axial force in Z direction on outer surface
+DESIGN POINT NEUMANN CONDITIONS:
+  - E: 2
+    ENTITY_TYPE: node_set_id
+    NUMDOF: 3
+    ONOFF: [0, 0, 1]
+    VAL: [0.0, 0.0, {pressure}]
+    FUNCT: [0, 0, 0]
+""")
+                tutorial_yaml = test_yaml
+                use_generated_stent = True
+                print("Created stent test YAML with VTU geometry")
+            except Exception as e:
+                print(f"Failed to generate stent mesh: {e}")
+        
+        if not use_generated_stent:
+            # Fallback: create a minimal test YAML (will fail without geometry)
+            test_yaml = work_dir / "test.4C.yaml"
+            test_yaml.write_text("""TITLE: Minimal test (no geometry - will fail)
+PROBLEM TYPE:
+  PROBLEMTYPE: Structure
+
+SOLVER 1:
+  SOLVER: "Superlu"
+  NAME: "Structure_Solver"
+
+STRUCTURAL DYNAMIC:
+  DYNAMICTYPE: Statics
+  TIMESTEP: 1.0
+  NUMSTEP: 1
+  LINEAR_SOLVER: 1
+  TOLDISP: 1e-06
+  TOLRES: 1e-06
+
+MATERIALS:
+  - MAT: 1
+    MAT_ElastHyper:
+      NUMMAT: 1
+      MATIDS: [2]
+      DENS: 7.8e-9
+  - MAT: 2
+    ELAST_CoupNeoHooke:
+      YOUNG: 200000.0
+      NUE: 0.3
+""")
+            tutorial_yaml = test_yaml
+            print("Created minimal test YAML (no geometry)")
+        
+        # Run 4C binary directly (we're already in the image!)
+        output_name = "test_output"
+        cmd = [
+            fourc_bin,
+            str(tutorial_yaml),
+            output_name
+        ]
+        
+        print(f"Running: {' '.join(cmd)}")
+        print(f"  Binary: {fourc_bin} (exists: {Path(fourc_bin).exists()})")
+        print(f"  YAML: {tutorial_yaml} (exists: {Path(tutorial_yaml).exists()})")
+        
+        env = os.environ.copy()
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=str(work_dir),
+            env=env
+        )
+        
+        # Check output files
+        output_files = list(output_dir.glob("*"))
+        
+        return {
+            "success": result.returncode == 0,
+            "returncode": result.returncode,
+            "stdout": result.stdout[-2000:] if result.stdout else "",
+            "stderr": result.stderr[-2000:] if result.stderr else "",
+            "output_files": [f.name for f in output_files],
+            "output_dir": str(output_dir),
+            "command": " ".join(cmd),
+            "fourc_binary": fourc_bin,
+            "binary_exists": Path(fourc_bin).exists(),
+            "yaml_exists": Path(tutorial_yaml).exists() if tutorial_yaml else False,
+            "found_test_files": found_files[:10] if found_files else [],
+            "mesh_tools_available": MESH_TOOLS_AVAILABLE,
+            "used_generated_stent": use_generated_stent,
+            "test_type": "stent_mesh"
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "success": False,
+            "error": "Timeout after 120 seconds",
+            "output_files": [f.name for f in output_dir.glob("*")] if output_dir.exists() else []
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "output_files": []
+        }
 
 
 if __name__ == "__main__":
