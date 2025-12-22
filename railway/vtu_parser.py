@@ -160,11 +160,13 @@ def parse_vtu_file(vtu_path: Path) -> Tuple[float, float, float, bool]:
             "element_cauchy_stress_xyz", "nodal_cauchy_stress_xyz",
             "nodal_cauchy_stresses_xyz", "element_cauchy_stresses_xyz",
             "Cauchy", "Stress", "vonMises", "von_mises"
-        ) or _get_cell_array(
-            "stress", "cauchy", "cauchy_stress", "sigma",
-            "element_cauchy_stress_xyz", "element_cauchy_stresses_xyz",
-            "nodal_cauchy_stresses_xyz", "Cauchy", "Stress"
         )
+        if stress_tensor is None:
+            stress_tensor = _get_cell_array(
+                "stress", "cauchy", "cauchy_stress", "sigma",
+                "element_cauchy_stress_xyz", "element_cauchy_stresses_xyz",
+                "nodal_cauchy_stresses_xyz", "Cauchy", "Stress"
+            )
         if stress_tensor is not None:
             stress_tensor = np.asarray(stress_tensor)
             print(f"Found stress tensor with shape: {stress_tensor.shape}")
@@ -191,7 +193,9 @@ def parse_vtu_file(vtu_path: Path) -> Tuple[float, float, float, bool]:
         
         # Extract strain
         max_strain = 0.0
-        strain_tensor = _get_point_array("strain", "gl_strain") or _get_cell_array("strain", "gl_strain")
+        strain_tensor = _get_point_array("strain", "gl_strain", "nodal_GL_strains_xyz")
+        if strain_tensor is None:
+            strain_tensor = _get_cell_array("strain", "gl_strain", "element_GL_strains_xyz")
         if strain_tensor is not None:
             strain_tensor = np.asarray(strain_tensor)
             if strain_tensor.ndim == 3 and strain_tensor.shape[1:] == (3, 3):
