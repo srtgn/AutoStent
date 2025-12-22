@@ -164,6 +164,8 @@ if SB3_AVAILABLE:
                     if result.get("success"):
                         stress = result.get("max_von_mises_stress", 100.0)
                         displacement = result.get("max_displacement", 0.0)
+                        self.last_yaml_content = result.get("yaml_content")
+                        self.last_vtu_content = result.get("vtu_content")
                         print(f"Step {self.step_count}: 4C SUCCESS in {time.time()-start_time:.2f}s. Stress={stress:.2f} MPa, Disp={displacement:.3f} mm")
                     else:
                         # Simulation failed
@@ -177,6 +179,8 @@ if SB3_AVAILABLE:
                     traceback.print_exc()
                     stress = 1000.0
                     displacement = 10.0
+                    self.last_yaml_content = None
+                    self.last_vtu_content = None
             else:
                 # Fast Mockup Calculation
                 d, t, n = self.params['diameter'], self.params['strut_thickness'], self.params['num_struts']
@@ -227,6 +231,15 @@ if SB3_AVAILABLE:
                                 displacement = 0.3 * (env.params['length'] / 20) * (0.12 / max(t, 0.05))
                             training_state["stress_history"].append(float(stress))
                             training_state["displacement_history"].append(float(displacement))
+                            
+                            # Save generated files for download
+                            if hasattr(env, 'last_yaml_content') and env.last_yaml_content:
+                                training_state["yaml_files"][training_state["current_step"]] = {
+                                    "yaml": env.last_yaml_content,
+                                    "vtu": env.last_vtu_content,
+                                    "params": dict(env.params),
+                                    "reward": float(reward)
+                                }
                     except Exception as e:
                         # print(f"Callback error: {e}")
                         pass
