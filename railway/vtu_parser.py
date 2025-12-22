@@ -149,16 +149,33 @@ def parse_vtu_file(vtu_path: Path) -> Tuple[float, float, float, bool]:
                     return np.asarray(blocks)
             return None
         
-        # Extract stress
+        # Extract stress - try multiple 4C naming conventions
         max_stress = 0.0
-        stress_tensor = _get_point_array("stress", "cauchy") or _get_cell_array("stress", "cauchy")
+        # Print available arrays for debugging
+        print(f"VTU point arrays: {list(point_data.keys())}")
+        print(f"VTU cell arrays: {list(cell_data.keys())}")
+        
+        stress_tensor = _get_point_array(
+            "stress", "cauchy", "cauchy_stress", "sigma", 
+            "element_cauchy_stress_xyz", "nodal_cauchy_stress_xyz",
+            "Cauchy", "Stress", "vonMises", "von_mises"
+        ) or _get_cell_array(
+            "stress", "cauchy", "cauchy_stress", "sigma",
+            "element_cauchy_stress_xyz", "Cauchy", "Stress"
+        )
         if stress_tensor is not None:
             stress_tensor = np.asarray(stress_tensor)
+            print(f"Found stress tensor with shape: {stress_tensor.shape}")
             if stress_tensor.ndim == 3 and stress_tensor.shape[1:] == (3, 3):
                 stress_tensor = stress_tensor.reshape(stress_tensor.shape[0], 9)
             if stress_tensor.ndim == 2 and stress_tensor.shape[1] in (6, 9):
                 von_mises = compute_von_mises_stress(stress_tensor)
                 max_stress = float(np.max(von_mises))
+            elif stress_tensor.ndim == 1:
+                # Already scalar (e.g., von Mises directly)
+                max_stress = float(np.max(stress_tensor))
+        else:
+            print("No stress array found in VTU")
         
         # Extract displacement
         max_disp = 0.0
