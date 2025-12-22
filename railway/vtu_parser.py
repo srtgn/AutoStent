@@ -210,8 +210,10 @@ def parse_vtu_file(vtu_path: Path) -> Tuple[float, float, float, bool]:
         return max_stress, max_disp, max_strain, ok, point_array_names, cell_array_names
         
     except Exception as e:
-        print(f"Error parsing VTU file: {e}")
-        return 0.0, 0.0, 0.0, False, [], []
+        import traceback
+        error_msg = f"Error parsing VTU file: {e}\n{traceback.format_exc()}"
+        print(error_msg)
+        return 0.0, 0.0, 0.0, False, [], [error_msg]  # Include error in cell_arrays for debugging
 
 
 def find_latest_vtu(output_dir: Path) -> Optional[Path]:
