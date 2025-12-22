@@ -686,10 +686,12 @@ def run_real_4c_simulation(params: StentParams):
             
             if latest_vtu:
                 try:
-                    max_stress, max_disp, max_strain, parse_success = parse_vtu_file(latest_vtu)
+                    max_stress, max_disp, max_strain, parse_success, point_arrays, cell_arrays = parse_vtu_file(latest_vtu)
                     debug_info["parse_success"] = parse_success
                     debug_info["parsed_stress"] = float(max_stress)
                     debug_info["parsed_disp"] = float(max_disp)
+                    debug_info["vtu_point_arrays"] = point_arrays
+                    debug_info["vtu_cell_arrays"] = cell_arrays
                     if parse_success:
                         print(f"Parsed VTU results: stress={max_stress:.2f}, disp={max_disp:.4f}")
                     else:
