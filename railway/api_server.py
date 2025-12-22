@@ -646,24 +646,45 @@ def run_real_4c_simulation(params: StentParams):
         max_stress = 0.0
         max_disp = 0.0
         max_strain = 0.0
+        debug_info = {"vtu_search": []}
         
         if MESH_TOOLS_AVAILABLE:
-            # IMPORTANT: 4C may write outputs either into work_dir/output (directory style)
-            # or next to the YAML file with an output-name prefix (prefix style).
-            # The simulator returns its best guess in result.output_directory.
-            search_dir = result.output_directory if hasattr(result, "output_directory") else output_dir
-            latest_vtu = find_latest_vtu(Path(search_dir))
+            # Search multiple possible output locations
+            search_dirs = []
+            if hasattr(result, "output_directory") and result.output_directory:
+                search_dirs.append(Path(result.output_directory))
+            search_dirs.append(output_dir)
+            search_dirs.append(work_dir)  # Also check work_dir directly
+            
+            latest_vtu = None
+            for search_dir in search_dirs:
+                if search_dir.exists():
+                    debug_info["vtu_search"].append({
+                        "dir": str(search_dir),
+                        "files": [f.name for f in search_dir.glob("*")][:20]
+                    })
+                    found = find_latest_vtu(search_dir)
+                    if found:
+                        latest_vtu = found
+                        debug_info["vtu_found"] = str(found)
+                        break
+            
             if latest_vtu:
                 try:
                     max_stress, max_disp, max_strain, parse_success = parse_vtu_file(latest_vtu)
+                    debug_info["parse_success"] = parse_success
+                    debug_info["parsed_stress"] = float(max_stress)
+                    debug_info["parsed_disp"] = float(max_disp)
                     if parse_success:
                         print(f"Parsed VTU results: stress={max_stress:.2f}, disp={max_disp:.4f}")
                     else:
                         print("VTU parsing failed - using placeholder values")
                 except Exception as e:
                     print(f"Error parsing VTU: {e}")
+                    debug_info["parse_error"] = str(e)
             else:
                 print("No VTU/VTK files found - 4C may have written no runtime VTK output")
+                debug_info["vtu_found"] = None
         
         # Read YAML and VTU content for storage
         yaml_content = None
@@ -707,6 +728,7 @@ def run_real_4c_simulation(params: StentParams):
             "metadata": result.metadata or {},
             "yaml_content": yaml_content,
             "vtu_content": vtu_content,
+            "debug_info": debug_info,
         }
         return payload
         
@@ -765,6 +787,31 @@ def run_simulation_sync(request: SimulationRequest):
     else:
         # Mockup mode
         return run_mockup_simulation(request.params)
+
+
+@app.get("/diagnose")
+def diagnose_simulation():
+    """Run a single test simulation and return detailed diagnostic info."""
+    params = StentParams(diameter=10.0, length=20.0, strut_thickness=0.12, num_struts=12, crown_height=1.0)
+    
+    result = run_real_4c_simulation(params)
+    
+    # Build diagnostic response (excluding binary file content for readability, but noting sizes)
+    diag = {
+        "success": result.get("success"),
+        "max_von_mises_stress": result.get("max_von_mises_stress"),
+        "max_displacement": result.get("max_displacement"),
+        "result_source": result.get("result", {}).get("source"),
+        "converged": result.get("result", {}).get("converged"),
+        "num_iterations": result.get("result", {}).get("num_iterations"),
+        "debug_info": result.get("debug_info", {}),
+        "yaml_size": len(result.get("yaml_content") or b""),
+        "vtu_size": len(result.get("vtu_content") or b""),
+        "error": result.get("error"),
+        "fourc_available": FOURC_AVAILABLE,
+        "mesh_tools_available": MESH_TOOLS_AVAILABLE,
+    }
+    return diag
 
 
 # ===== RL TRAINING ENDPOINTS =====
