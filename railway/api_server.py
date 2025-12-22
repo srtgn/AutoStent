@@ -573,13 +573,12 @@ DESIGN SURF DIRICH CONDITIONS:
     FUNCT: [0, 0, 0]
 
 DESIGN SURF NEUMANN CONDITIONS:
-  - E: 1
+  - E: 2
     ENTITY_TYPE: node_set_id
     NUMDOF: 3
-    ONOFF: [1, 1, 0]
-    VAL: [{pressure}, {pressure}, 0.0]
+    ONOFF: [1, 0, 0]
+    VAL: [{pressure}, 0.0, 0.0]
     FUNCT: [0, 0, 0]
-    TYPE: "orthopressure"
 """
     output_path.write_text(yaml_content)
 
