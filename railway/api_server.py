@@ -506,7 +506,7 @@ MATERIALS:
     
     # Write complete 4C YAML with VTU reference
     vtu_filename = vtu_path.name
-    pressure = params.diameter * 0.1  # Radial pressure in MPa
+    pressure = params.diameter * 0.01  # Reduced radial pressure for stability
     
     yaml_content = f"""TITLE: Stent simulation - diameter={params.diameter}mm, length={params.length}mm
 PROBLEM TYPE:
@@ -564,7 +564,7 @@ STRUCTURE GEOMETRY:
           MAT: 1
           KINEM: nonlinear
 
-DESIGN SURF DIRICH CONDITIONS:
+DESIGN POINT DIRICH CONDITIONS:
   - E: 1
     ENTITY_TYPE: node_set_id
     NUMDOF: 3
@@ -572,12 +572,12 @@ DESIGN SURF DIRICH CONDITIONS:
     VAL: [0.0, 0.0, 0.0]
     FUNCT: [0, 0, 0]
 
-DESIGN SURF NEUMANN CONDITIONS:
+DESIGN POINT NEUMANN CONDITIONS:
   - E: 2
     ENTITY_TYPE: node_set_id
     NUMDOF: 3
-    ONOFF: [1, 0, 0]
-    VAL: [{pressure}, 0.0, 0.0]
+    ONOFF: [1, 1, 0]
+    VAL: [{pressure}, {pressure}, 0.0]
     FUNCT: [0, 0, 0]
 """
     output_path.write_text(yaml_content)
