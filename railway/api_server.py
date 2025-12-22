@@ -650,21 +650,36 @@ def run_real_4c_simulation(params: StentParams):
         
         if MESH_TOOLS_AVAILABLE:
             # Search multiple possible output locations
+            # IMPORTANT: 4C writes results to output-vtk-files/, not the work_dir root
             search_dirs = []
+            
+            # Check for output-vtk-files directory first (this is where 4C writes results)
+            vtk_output_dir = work_dir / "output-vtk-files"
+            if vtk_output_dir.exists():
+                search_dirs.append(vtk_output_dir)
+            
             if hasattr(result, "output_directory") and result.output_directory:
                 search_dirs.append(Path(result.output_directory))
             search_dirs.append(output_dir)
-            search_dirs.append(work_dir)  # Also check work_dir directly
+            search_dirs.append(work_dir)  # Last resort
             
             latest_vtu = None
             for search_dir in search_dirs:
                 if search_dir.exists():
+                    # List files for debugging
+                    files_in_dir = [f.name for f in search_dir.glob("*")][:20]
                     debug_info["vtu_search"].append({
                         "dir": str(search_dir),
-                        "files": [f.name for f in search_dir.glob("*")][:20]
+                        "files": files_in_dir
                     })
+                    
+                    # Find VTU files, but skip input mesh files (ending in _mesh.vtu)
                     found = find_latest_vtu(search_dir)
                     if found:
+                        # Skip input mesh files - we want OUTPUT files
+                        if str(found).endswith("_mesh.vtu"):
+                            debug_info["skipped_input_mesh"] = str(found)
+                            continue
                         latest_vtu = found
                         debug_info["vtu_found"] = str(found)
                         break
