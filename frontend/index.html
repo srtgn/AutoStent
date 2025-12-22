@@ -288,6 +288,15 @@
                     <input type="number" v-model.number="trainSteps" min="50" max="10000" step="50" :disabled="training"
                         style="width: 80px; padding: 6px 8px;">
                 </div>
+                <div class="flex items-center gap-2 bg-gray-50 rounded px-3 py-1">
+                    <label class="text-xs text-gray-500">Mesh</label>
+                    <select v-model="meshCoarseness" :disabled="training"
+                        style="padding: 6px 8px; font-size: 12px; border: 1px solid #d1d5db; border-radius: 4px;">
+                        <option value="fine">Fine (Slow)</option>
+                        <option value="medium">Medium</option>
+                        <option value="coarse">Coarse (Fast)</option>
+                    </select>
+                </div>
                 <button v-if="!training" @click="trainAgent" class="btn btn-primary">
                     Train Agent
                 </button>
@@ -589,6 +598,7 @@
                 const training = ref(false);
                 const progress = ref(0);
                 const trainSteps = ref(2000);
+                const meshCoarseness = ref('medium');  // fine, medium, coarse
                 let trainingInterval = null;
 
                 // Real RL state
@@ -987,7 +997,8 @@
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
                                     steps: trainSteps.value,
-                                    use_docker: useDocker.value  // Pass 4C mode flag to backend
+                                    use_docker: useDocker.value,  // Pass 4C mode flag to backend
+                                    mesh_coarseness: meshCoarseness.value  // fine, medium, coarse
                                 })
                             });
                             const data = await res.json();
@@ -1332,7 +1343,7 @@
                             text: `Random: ${randomMean.value.toFixed(1)} ± ${randomStd.toFixed(1)} | RL: ${trainedMean.value.toFixed(1)} ± ${trainedStd.toFixed(1)}`,
                             showarrow: false, font: { size: 11, color: '#555' }
                         }],
-                        modebar: { orientation: 'h', bgcolor: 'rgba(255,255,255,0.8)' }
+                        modebar: { orientation: 'v', bgcolor: 'rgba(255,255,255,0.8)' }
                     }, { responsive: true, displayModeBar: true, modeBarButtonsToRemove: ['lasso2d', 'select2d'] });
 
                     // Histogram - with proper bin calculation
@@ -1388,7 +1399,7 @@
                             borderwidth: 1,
                             font: { size: 11 }
                         },
-                        modebar: { orientation: 'h', bgcolor: 'rgba(255,255,255,0.8)' }
+                        modebar: { orientation: 'v', bgcolor: 'rgba(255,255,255,0.8)' }
                     }, { responsive: true, displayModeBar: true, modeBarButtonsToRemove: ['lasso2d', 'select2d'] });
                 }
 
@@ -1613,7 +1624,7 @@
 
                 return {
                     params, metrics, currentReward, episodeRewards, rewardHistory,
-                    episodes, steps, avgReward, training, progress, trainSteps,
+                    episodes, steps, avgReward, training, progress, trainSteps, meshCoarseness,
                     trainAgent, stopTraining, resetEnv,
                     // Real RL
                     useRealRL, backendConnected,

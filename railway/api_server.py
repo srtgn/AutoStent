@@ -112,17 +112,18 @@ training_state = {
 if SB3_AVAILABLE:
     class SimpleStentEnv(gym.Env):
         """Stent environment for RL training (supports Mockup and Real 4C)"""
-        def __init__(self, use_real_4c=False):
+        def __init__(self, use_real_4c=False, mesh_coarseness="medium"):
             super().__init__()
             self.observation_space = spaces.Box(low=0, high=1, shape=(12,), dtype=np.float32)
             self.action_space = spaces.Box(low=-1, high=1, shape=(7,), dtype=np.float32)
             self.max_episode_steps = 50
             self.step_count = 0
             self.use_real_4c = use_real_4c and FOURC_AVAILABLE
+            self.mesh_coarseness = mesh_coarseness
             self.params = {'diameter': 10.0, 'strut_thickness': 0.12, 'num_struts': 12, 'crown_height': 1.0, 'length': 20.0}
             
             if self.use_real_4c:
-                print(f"Environment initialized with REAL 4C solver (FOURC_AVAILABLE={FOURC_AVAILABLE})")
+                print(f"Environment initialized with REAL 4C solver (mesh={mesh_coarseness})")
             else:
                 print(f"Environment initialized with MOCKUP solver (requested={use_real_4c}, available={FOURC_AVAILABLE})")
             
@@ -159,7 +160,7 @@ if SB3_AVAILABLE:
                 start_time = time.time()
                 try:
                     p = StentParams(**self.params)
-                    result = run_real_4c_simulation(p)
+                    result = run_real_4c_simulation(p, mesh_coarseness=self.mesh_coarseness)
                     
                     if result.get("success"):
                         stress = result.get("max_von_mises_stress", 100.0)
@@ -259,7 +260,7 @@ if SB3_AVAILABLE:
                 self.ep_reward = 0
             return True
 
-    def run_training(total_steps, use_real_4c=False):
+    def run_training(total_steps, use_real_4c=False, mesh_coarseness="medium"):
         global training_state
         with state_lock:
             training_state["is_training"] = True
@@ -273,9 +274,10 @@ if SB3_AVAILABLE:
             training_state["episode_rewards"] = []
             training_state["best_reward"] = -100.0
             training_state["yaml_files"] = {}
+            training_state["mesh_coarseness"] = mesh_coarseness
         
         try:
-            env = SimpleStentEnv(use_real_4c=use_real_4c)
+            env = SimpleStentEnv(use_real_4c=use_real_4c, mesh_coarseness=mesh_coarseness)
             model = PPO("MlpPolicy", env, verbose=0, learning_rate=3e-4, 
                         n_steps=128, batch_size=64, n_epochs=5, gamma=0.99, device='cpu')
             callback = TrainingCallback(total_steps)
@@ -307,6 +309,7 @@ class SimulationRequest(BaseModel):
 class TrainRequest(BaseModel):
     steps: int = 2000
     use_docker: bool = False
+    mesh_coarseness: str = "medium"  # fine, medium, coarse
 
 
 # ===== SIMULATION ENDPOINTS =====
@@ -434,8 +437,19 @@ def check_mesh_tools():
     return result
 
 
-def generate_4c_yaml(params: StentParams, output_path: Path):
+def generate_4c_yaml(params: StentParams, output_path: Path, mesh_coarseness: str = "medium"):
     """Generate complete 4C YAML input file with VTU mesh file."""
+    
+    # Set mesh resolution based on coarseness
+    if mesh_coarseness == "fine":
+        n_circ_per_strut = 4
+        n_radial = 2
+    elif mesh_coarseness == "coarse":
+        n_circ_per_strut = 1
+        n_radial = 1
+    else:  # medium (default)
+        n_circ_per_strut = 2
+        n_radial = 1
     
     if not MESH_TOOLS_AVAILABLE:
         # Fallback to simple YAML without mesh
@@ -502,8 +516,8 @@ MATERIALS:
     
     nodes, elements, fixed_nodes, loaded_nodes = generate_cylindrical_stent_mesh(
         geometry,
-        n_circumferential_per_strut=4,
-        n_radial=2
+        n_circumferential_per_strut=n_circ_per_strut,
+        n_radial=n_radial
     )
     
     # Generate VTU file
@@ -596,7 +610,7 @@ DESIGN POINT NEUMANN CONDITIONS:
     output_path.write_text(yaml_content)
 
 
-def run_real_4c_simulation(params: StentParams):
+def run_real_4c_simulation(params: StentParams, mesh_coarseness: str = "medium"):
     """Run actual 4C FEM simulation."""
     if not FOURC_AVAILABLE:
         return {
@@ -613,7 +627,7 @@ def run_real_4c_simulation(params: StentParams):
         output_dir = work_dir / "output"
         
         # Generate 4C input file
-        generate_4c_yaml(params, yaml_path)
+        generate_4c_yaml(params, yaml_path, mesh_coarseness=mesh_coarseness)
         
         # Configure simulation
         config = SimulationConfig(
@@ -861,10 +875,11 @@ def start_training(request: TrainRequest):
     with state_lock:
         if training_state["is_training"]:
             return {"status": "already_running"}
+        training_state["mesh_coarseness"] = request.mesh_coarseness
     
-    thread = threading.Thread(target=run_training, args=(request.steps, request.use_docker), daemon=True)
+    thread = threading.Thread(target=run_training, args=(request.steps, request.use_docker, request.mesh_coarseness), daemon=True)
     thread.start()
-    return {"status": "started", "steps": request.steps}
+    return {"status": "started", "steps": request.steps, "mesh_coarseness": request.mesh_coarseness}
 
 @app.post("/stop")
 def stop_training():
