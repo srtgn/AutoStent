@@ -158,10 +158,12 @@ def parse_vtu_file(vtu_path: Path) -> Tuple[float, float, float, bool]:
         stress_tensor = _get_point_array(
             "stress", "cauchy", "cauchy_stress", "sigma", 
             "element_cauchy_stress_xyz", "nodal_cauchy_stress_xyz",
+            "nodal_cauchy_stresses_xyz", "element_cauchy_stresses_xyz",
             "Cauchy", "Stress", "vonMises", "von_mises"
         ) or _get_cell_array(
             "stress", "cauchy", "cauchy_stress", "sigma",
-            "element_cauchy_stress_xyz", "Cauchy", "Stress"
+            "element_cauchy_stress_xyz", "element_cauchy_stresses_xyz",
+            "nodal_cauchy_stresses_xyz", "Cauchy", "Stress"
         )
         if stress_tensor is not None:
             stress_tensor = np.asarray(stress_tensor)
