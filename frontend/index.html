@@ -327,11 +327,11 @@
                 </div>
                 <div class="flex items-center gap-2 bg-gray-50 rounded px-3" style="height: 36px;">
                     <label class="text-gray-500" style="font-size: 13px;">RL</label>
-                    <select class="text-gray-700 cursor-not-allowed" disabled title="Only PPO is supported"
-                        style="padding: 6px 8px; font-size: 13px; border: 1px solid #d1d5db; border-radius: 4px; height: 28px; background: #f9fafb;">
+                    <select class="text-gray-700 bg-white cursor-pointer"
+                        style="padding: 6px 8px; font-size: 13px; border: 1px solid #d1d5db; border-radius: 4px; height: 28px;">
                         <option value="PPO" selected>PPO (Default)</option>
-                        <option value="SAC">SAC (Coming Soon)</option>
-                        <option value="TD3">TD3 (Coming Soon)</option>
+                        <option value="SAC" disabled class="text-gray-400">SAC (Coming Soon)</option>
+                        <option value="TD3" disabled class="text-gray-400">TD3 (Coming Soon)</option>
                     </select>
                 </div>
                 <button v-if="!training" @click="trainAgent" class="btn btn-primary"
@@ -346,7 +346,7 @@
                     style="height: 36px; font-size: 13px; padding: 0 20px; display: flex; align-items: center;">Reset</button>
 
                 <!-- Download Training Files button (shows YAML+VTU files by step) -->
-                <button v-if="(useDocker || useRealRL) && generatedFiles.length > 0"
+                <button v-if="!training && (useDocker || useRealRL) && generatedFiles.length > 0"
                     @click="showDownloads = !showDownloads" class="btn btn-secondary"
                     style="height: 36px; font-size: 13px; padding: 0 16px; display: flex; align-items: center;">
                     📥 Files ({{ generatedFiles.length }})
@@ -505,161 +505,7 @@
             </div>
         </div>
 
-        <!-- Queens-Py Scientific Analysis Panel -->
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mt-6 mb-6">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-sm font-semibold flex items-center gap-2 text-gray-900 uppercase tracking-wide">
-                    Queens-Py
-                </h2>
-                <div v-if="uqAnalysis.loading" class="flex items-center gap-2 text-xs text-blue-600 font-medium">
-                    Computing Samples...
-                </div>
-            </div>
-
-            <!-- Module Tabs -->
-            <div class="flex border-b border-gray-200 mb-4 space-x-4">
-                <button @click="uqAnalysis.module = 'uq'"
-                    class="pb-2 text-xs font-semibold uppercase tracking-wide border-b-2 transition-colors"
-                    :class="uqAnalysis.module === 'uq' ? 'border-blue-600 text-blue-800' : 'border-transparent text-gray-500 hover:text-gray-700'">
-                    Uncertainty Quantification
-                </button>
-                <button @click="uqAnalysis.module = 'sensitivity'"
-                    class="pb-2 text-xs font-semibold uppercase tracking-wide border-b-2 transition-colors"
-                    :class="uqAnalysis.module === 'sensitivity' ? 'border-blue-600 text-blue-800' : 'border-transparent text-gray-500 hover:text-gray-700'">
-                    Sensitivity Analysis
-                </button>
-                <button @click="uqAnalysis.module = 'parameter'"
-                    class="pb-2 text-xs font-semibold uppercase tracking-wide border-b-2 transition-colors"
-                    :class="uqAnalysis.module === 'parameter' ? 'border-blue-600 text-blue-800' : 'border-transparent text-gray-500 hover:text-gray-700'">
-                    Parameter Studies
-                </button>
-                <button @click="uqAnalysis.module = 'surrogate'"
-                    class="pb-2 text-xs font-semibold uppercase tracking-wide border-b-2 transition-colors"
-                    :class="uqAnalysis.module === 'surrogate' ? 'border-blue-600 text-blue-800' : 'border-transparent text-gray-500 hover:text-gray-700'">
-                    Surrogate Modeling
-                </button>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <!-- Left: Controls -->
-                <div class="col-span-1 space-y-4 border-r pr-4">
-                    <div>
-                        <label class="block text-xs font-medium text-gray-500 mb-1 uppercase">Stent Design Input</label>
-                        <select v-model="uqAnalysis.source"
-                            class="w-full text-xs border rounded px-2 py-1.5 bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                            <option value="current">Current Parameters (Manual)</option>
-                            <option value="trained" :disabled="!trainedPolicy">Optimized Policy (RL Agent) {{
-                                !trainedPolicy ?
-                                '(Train First)' : '' }}</option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label class="block text-xs font-medium text-gray-500 mb-1 uppercase">Parameter Uncertainty
-                            (Input Distributions)</label>
-                        <select v-model="uqAnalysis.level"
-                            class="w-full text-xs border rounded px-2 py-1.5 bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                            <option value="low">Low Variance (σ = 5%)</option>
-                            <option value="medium">Medium Variance (σ = 10%)</option>
-                            <option value="high">High Variance (σ = 20%)</option>
-                        </select>
-                    </div>
-
-                    <button @click="runUQAnalysis" :disabled="uqAnalysis.loading"
-                        class="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-2 px-4 rounded shadow-sm transition-colors flex items-center justify-center gap-2 uppercase tracking-wide">
-                        Run UQ Analysis
-                    </button>
-
-                    <div v-if="uqAnalysis.results" class="bg-blue-50 rounded p-3 text-xs space-y-1">
-                        <!-- UQ Summary -->
-                        <div v-if="uqAnalysis.module === 'uq'">
-                            <div class="font-semibold text-blue-900 border-b border-blue-200 pb-1 mb-1 uppercase">
-                                Statistical Summary</div>
-                            <div class="flex justify-between"><span>N (Patients):</span> <span class="font-mono">{{
-                                    uqAnalysis.results.summary.samples }}</span></div>
-                            <div class="flex justify-between"><span>Failure Prob:</span> <span class="font-mono">{{
-                                    (uqAnalysis.results.summary.failure_probability * 100).toFixed(1) }}%</span></div>
-                            <div class="flex justify-between"><span title="Safety Factor">Mean SF (μ):</span> <span
-                                    class="font-mono">{{ uqAnalysis.results.summary.mean_safety_factor.toFixed(2)
-                                    }}</span></div>
-                            <div class="flex justify-between"><span title="Standard Deviation">Std Dev (σ):</span> <span
-                                    class="font-mono">{{ uqAnalysis.results.summary.std_safety_factor.toFixed(2)
-                                    }}</span></div>
-                            <div class="mt-2 pt-1 border-t border-purple-200">
-                                <span class="block text-gray-500 mb-0.5">95% Confidence Interval:</span>
-                                <div class="font-mono text-center bg-white rounded border px-1">
-                                    [{{ uqAnalysis.results.summary.ci_95_lower.toFixed(2) }} - {{
-                                    uqAnalysis.results.summary.ci_95_upper.toFixed(2) }}]
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Sensitivity Summary -->
-                        <div v-else>
-                            <div class="font-semibold text-purple-900 border-b border-purple-200 pb-1 mb-1 uppercase">
-                                Influence Ranking</div>
-                            <p class="mb-2 text-gray-500 italic">Parameters impacting Safety Factor:</p>
-                            <div v-for="(val, key) in uqAnalysis.results.summary.sensitivity_indices" :key="key"
-                                class="flex justify-between items-center mb-1">
-                                <span>{{ key }}:</span>
-                                <div class="flex items-center gap-1">
-                                    <span class="w-16 h-1 bg-gray-200 rounded overflow-hidden">
-                                        <div :class="val > 0 ? 'bg-green-500' : 'bg-red-500'" class="h-full"
-                                            :style="{ width: Math.abs(val) * 100 + '%' }"></div>
-                                    </span>
-                                    <span class="font-mono w-8 text-right">{{ val.toFixed(2) }}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Right: Results -->
-                <div class="col-span-2 space-y-4">
-                    <div v-if="!uqAnalysis.results"
-                        class="h-full flex flex-col items-center justify-center text-gray-400 text-xs border-2 border-dashed rounded-lg bg-gray-50"
-                        style="min-height: 250px;">
-                        <p class="font-medium">Analysis Pending</p>
-                        <p>Run analysis to generate Reliability & Sensitivity plots</p>
-                    </div>
-
-                    <!-- UQ Charts -->
-                    <div v-show="uqAnalysis.results && uqAnalysis.module === 'uq'" class="grid grid-cols-2 gap-4">
-                        <div class="rounded border p-1 bg-white">
-                            <div id="uq-reliability-chart" style="height: 300px; width: 100%;"></div>
-                        </div>
-                        <div class="rounded border p-1 bg-white">
-                            <div id="uq-scatter-chart" style="height: 300px; width: 100%;"></div>
-                        </div>
-                    </div>
-
-                    <!-- Sensitivity Charts -->
-                    <div v-show="uqAnalysis.results && uqAnalysis.module === 'sensitivity'" class="h-full">
-                        <div class="rounded border p-1 bg-white h-full">
-                            <div id="uq-sensitivity-chart" style="height: 300px; width: 100%;"></div>
-                        </div>
-                    </div>
-
-                    <!-- Parameter Studies Chart -->
-                    <div v-show="uqAnalysis.results && uqAnalysis.module === 'parameter'" class="h-full">
-                        <div class="rounded border p-1 bg-white h-full">
-                            <div id="uq-parameter-chart" style="height: 300px; width: 100%;"></div>
-                        </div>
-                    </div>
-
-                    <!-- Surrogate Modeling Chart -->
-                    <div v-show="uqAnalysis.results && uqAnalysis.module === 'surrogate'" class="h-full">
-                        <div
-                            class="rounded border p-1 bg-white h-full flex flex-col justify-center items-center p-6 text-center">
-                            <h3 class="text-sm font-semibold text-gray-700 mb-2">Response Surface Model</h3>
-                            <p class="text-xs text-gray-500 mb-4">A linear surrogate model (R² = 0.92) approximates the
-                                Safety Factor based on design inputs.</p>
-                            <div id="uq-surrogate-chart" style="height: 240px; width: 100%;"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <!-- Queens-Py Panel Removed -->
 
         <!-- Webviewer removed - caused 404 errors -->
 
