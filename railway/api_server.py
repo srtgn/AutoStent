@@ -224,7 +224,7 @@ if SB3_AVAILABLE:
             
             if self.n_calls % 2 == 0:  # Log every 2 steps for smoother curves
                 with state_lock:
-                    training_state["current_step"] = self.n_calls
+                    training_state["current_step"] = min(self.n_calls, self.total_steps)
                     training_state["progress"] = self.n_calls / self.total_steps
                     training_state["rewards"].append(float(reward))
                     try:
