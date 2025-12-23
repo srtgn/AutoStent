@@ -330,8 +330,8 @@
                     <select class="text-gray-700 bg-white cursor-pointer"
                         style="padding: 6px 8px; font-size: 13px; border: 1px solid #d1d5db; border-radius: 4px; height: 28px;">
                         <option value="PPO" selected>PPO (Default)</option>
-                        <option value="SAC" disabled class="text-gray-400">SAC (Coming Soon)</option>
-                        <option value="TD3" disabled class="text-gray-400">TD3 (Coming Soon)</option>
+                        <option value="SAC" disabled class="text-gray-400">SAC</option>
+                        <option value="TD3" disabled class="text-gray-400">TD3</option>
                     </select>
                 </div>
                 <button v-if="!training" @click="trainAgent" class="btn btn-primary"
@@ -636,7 +636,7 @@
                 const training = ref(false);
                 const progress = ref(0);
                 const trainSteps = ref(2000);
-                const meshCoarseness = ref('medium');  // fine, medium, coarse
+                const meshCoarseness = ref('coarse');  // fine, medium, coarse
                 let trainingInterval = null;
 
                 // Real RL state
@@ -990,208 +990,7 @@
                 const comparisonProgress = ref(0);
                 const comparisonPhase = ref('');
 
-                // --- UQ / Clinical Robustness State ---
-                const uqAnalysis = ref({
-                    loading: false,
-                    source: 'current', // 'current' or 'trained'
-                    level: 'medium',   // 'low', 'medium', 'high'
-                    results: null,
-                    show: true,
-                    module: 'uq' // 'uq' or 'sensitivity'
-                });
-
-                async function runUQAnalysis() {
-                    uqAnalysis.value.loading = true;
-                    uqAnalysis.value.results = null;
-
-                    try {
-                        // Determine params
-                        let p = { ...params.value };
-                        if (uqAnalysis.value.source === 'trained' && trainedPolicy.value) {
-                            p = { ...trainedPolicy.value };
-                        }
-
-                        // Call Backend
-                        const res = await fetch(`${backendUrl}/analyze/uq`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                params: p,
-                                num_samples: 20, // Fast demo
-                                use_docker: useDocker.value,
-                                uncertainty_level: uqAnalysis.value.level
-                            })
-                        });
-                        const data = await res.json();
-
-                        if (data.success && data.summary) {
-                            uqAnalysis.value.results = data;
-                            // Update plots next tick
-                            setTimeout(() => {
-                                updateUQPlots(data.samples);
-                                if (data.summary.sensitivity_indices) {
-                                    updateSensitivityPlot(data.summary.sensitivity_indices);
-                                }
-                                updateParameterPlot(data.samples);
-                                updateSurrogatePlot(data.samples);
-                            }, 100);
-                        }
-                    } catch (e) {
-                        console.error("UQ Error", e);
-                    } finally {
-                        uqAnalysis.value.loading = false;
-                    }
-                }
-
-                function updateUQPlots(samples) {
-                    if (!samples || samples.length === 0) return;
-
-                    const safeties = samples.map(s => s.outputs.SafetyFactor);
-                    const stresses = samples.map(s => s.outputs.Stress);
-                    const disps = samples.map(s => s.outputs.Displacement);
-
-                    // 1. Reliability (Histogram of Safety Factor)
-                    const trace1 = {
-                        x: safeties,
-                        type: 'histogram',
-                        name: 'Safety Factor',
-                        marker: { color: safeties.map(s => s < 1.0 ? '#ef4444' : '#22c55e') },
-                        opacity: 0.7
-                    };
-
-                    // Add limit line
-                    const layout1 = {
-                        title: { text: 'Reliability Distribution (SF)', font: { size: 12 } },
-                        margin: { t: 30, b: 30, l: 30, r: 10 },
-                        height: 300,
-                        shapes: [{
-                            type: 'line', x0: 1.0, x1: 1.0, y0: 0, y1: 1, yref: 'paper',
-                            line: { color: 'red', width: 2, dash: 'dash' }
-                        }],
-                        font: { family: 'Inter, sans-serif' }
-                    };
-                    Plotly.newPlot('uq-reliability-chart', [trace1], layout1, { displayModeBar: false });
-
-                    // 2. Performance Cloud (Stress vs Disp)
-                    const trace2 = {
-                        x: disps,
-                        y: stresses,
-                        mode: 'markers',
-                        type: 'scatter',
-                        marker: {
-                            size: 8,
-                            color: safeties,
-                            colorscale: 'RdYlGn',
-                            showscale: false
-                        },
-                        text: safeties.map(s => `SF: ${s.toFixed(2)}`),
-                        hovertemplate: 'Disp: %{x:.3f}mm<br>Stress: %{y:.1f}MPa<br>%{text}<extra></extra>'
-                    };
-
-                    const layout2 = {
-                        title: { text: 'Performance Cloud (Stress vs Disp)', font: { size: 12 } },
-                        margin: { t: 30, b: 30, l: 40, r: 10 },
-                        height: 300,
-                        xaxis: { title: 'Displacement (mm)', zeroline: false },
-                        yaxis: { title: 'Stress (MPa)', zeroline: false },
-                        hovermode: 'closest',
-                        font: { family: 'Inter, sans-serif' }
-                    };
-                    Plotly.newPlot('uq-scatter-chart', [trace2], layout2, { displayModeBar: false });
-                }
-
-                function updateSensitivityPlot(indices) {
-                    if (!indices) return;
-
-                    const xValues = Object.keys(indices);
-                    const yValues = Object.values(indices);
-                    const colors = yValues.map(v => v > 0 ? '#22c55e' : '#ef4444'); // Green pos, Red neg
-
-                    const trace = {
-                        x: xValues,
-                        y: yValues,
-                        type: 'bar',
-                        marker: { color: colors },
-                        name: 'Correlation'
-                    };
-
-                    const layout = {
-                        title: { text: 'Parameter Sensitivity (Correlation with Safety)', font: { size: 12 } },
-                        margin: { t: 30, b: 30, l: 40, r: 10 },
-                        height: 300,
-                        yaxis: { title: 'Correlation Coefficient', range: [-1, 1] },
-                        font: { family: 'Inter, sans-serif' }
-                    };
-
-                    Plotly.newPlot('uq-sensitivity-chart', [trace], layout, { displayModeBar: false });
-                }
-
-                function updateParameterPlot(samples) {
-                    if (!samples || samples.length === 0) return;
-
-                    // X: Diameter (most common param), Y: Safety Factor
-                    // In real app, we might select the most sensitive param
-                    const xVals = samples.map(s => s.inputs.diameter);
-                    const yVals = samples.map(s => s.outputs.safety_factor);
-
-                    const trace = {
-                        x: xVals,
-                        y: yVals,
-                        mode: 'markers',
-                        type: 'scatter',
-                        marker: { color: '#2563eb', size: 6, opacity: 0.7 },
-                        name: 'Samples'
-                    };
-
-                    const layout = {
-                        title: { text: 'Safety Factor vs Diameter', font: { size: 12 } },
-                        margin: { t: 30, b: 30, l: 40, r: 10 },
-                        height: 300,
-                        xaxis: { title: 'Diameter (mm)' },
-                        yaxis: { title: 'Safety Factor' },
-                        font: { family: 'Inter, sans-serif' }
-                    };
-                    Plotly.newPlot('uq-parameter-chart', [trace], layout, { displayModeBar: false });
-                }
-
-                function updateSurrogatePlot(samples) {
-                    if (!samples || samples.length === 0) return;
-
-                    // Simple Linear Regression Visualization (Mocked for visual)
-                    // Plotting Predicted vs Actual
-                    const actual = samples.map(s => s.outputs.safety_factor);
-                    // Add some noise to actual to simulate "predicted" for the surrogate viz
-                    const predicted = actual.map(v => v + (Math.random() - 0.5) * 0.1);
-
-                    const traceHub = {
-                        x: actual,
-                        y: predicted,
-                        mode: 'markers',
-                        type: 'scatter',
-                        marker: { color: '#9333ea', size: 5 },
-                        name: 'Data Points'
-                    };
-
-                    const traceLine = {
-                        x: [Math.min(...actual), Math.max(...actual)],
-                        y: [Math.min(...actual), Math.max(...actual)],
-                        mode: 'lines',
-                        type: 'scatter',
-                        line: { color: '#374151', dash: 'dash' },
-                        name: 'Perfect Fit'
-                    };
-
-                    const layout = {
-                        title: { text: 'Surrogate Accuracy (Predicted vs Actual)', font: { size: 12 } },
-                        margin: { t: 30, b: 30, l: 40, r: 10 },
-                        height: 240,
-                        xaxis: { title: 'Actual Safety Factor' },
-                        yaxis: { title: 'Predicted Safety Factor' },
-                        showlegend: false,
-                        font: { family: 'Inter, sans-serif' }
-                    };
-                    Plotly.newPlot('uq-surrogate-chart', [traceHub, traceLine], layout, { displayModeBar: false });
-                }
+                // --- UQ Logic Removed ---
 
                 // Store trained policy (best params found during training)
                 const trainedPolicy = ref(null);
@@ -1900,7 +1699,7 @@
                     // Comparison
                     comparing, comparisonDone, comparisonEpisodes,
                     // UQ
-                    uqAnalysis, runUQAnalysis,
+                    // UQ Removed
                     randomMean, trainedMean, improvement,
                     comparisonProgress, comparisonPhase,
                     runComparison,
