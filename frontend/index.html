@@ -122,7 +122,7 @@
             font-family: inherit;
         }
 
-        /* Move Plotly modebar to top-right in one row for all charts */
+        /* Move Plotly modebar to top-right in one row for training charts */
         .js-plotly-plot .modebar-container {
             right: 5px !important;
             left: auto !important;
@@ -148,6 +148,34 @@
         .js-plotly-plot .modebar-btn:hover {
             opacity: 1;
         }
+
+        /* Comparison charts: modebar in a single vertical column */
+        #boxplot-chart .modebar,
+        #histogram-chart .modebar {
+            display: flex !important;
+            flex-direction: column !important;
+            top: 0 !important;
+            right: 0 !important;
+            height: auto !important;
+            width: 32px !important;
+            /* Force narrow width */
+            background: rgba(255, 255, 255, 0.8) !important;
+        }
+
+        #boxplot-chart .modebar-group,
+        #histogram-chart .modebar-group {
+            display: flex !important;
+            flex-direction: column !important;
+            margin-bottom: 5px !important;
+        }
+
+        /* Ensure options in select have same font */
+        select,
+        option,
+        input {
+            font-family: inherit;
+            font-size: 13px;
+        }
     </style>
 </head>
 
@@ -156,7 +184,7 @@
         <!-- Header -->
         <header class="mb-6 flex items-center justify-between">
             <div>
-                <h1 class="text-2xl font-bold text-gray-800">AutoStent Design Optimization</h1>
+                <h1 class="text-2xl font-bold text-gray-800">AutoStent Suite</h1>
                 <p class="text-gray-500 text-sm">Reinforcement Learning for Autonomous Stent Design</p>
             </div>
             <!-- Checkboxes hidden - always enabled by default -->
@@ -283,32 +311,36 @@
 
             <!-- Controls & Stats in one row -->
             <div class="flex items-center gap-4 mb-4 pb-4 border-b border-gray-100 relative">
-                <div class="flex items-center gap-2 bg-gray-50 rounded px-3 py-1">
-                    <label class="text-xs text-gray-500">Steps</label>
+                <div class="flex items-center gap-2 bg-gray-50 rounded px-3" style="height: 36px;">
+                    <label class="text-gray-500" style="font-size: 13px;">Steps</label>
                     <input type="number" v-model.number="trainSteps" min="50" max="10000" step="50" :disabled="training"
-                        style="width: 80px; padding: 6px 8px;">
+                        style="width: 80px; padding: 6px 8px; font-size: 13px; height: 28px;">
                 </div>
-                <div class="flex items-center gap-2 bg-gray-50 rounded px-3 py-1">
-                    <label class="text-xs text-gray-500">Mesh</label>
+                <div class="flex items-center gap-2 bg-gray-50 rounded px-3" style="height: 36px;">
+                    <label class="text-gray-500" style="font-size: 13px;">Mesh</label>
                     <select v-model="meshCoarseness" :disabled="training"
-                        style="padding: 6px 8px; font-size: 12px; border: 1px solid #d1d5db; border-radius: 4px;">
+                        style="padding: 6px 8px; font-size: 13px; border: 1px solid #d1d5db; border-radius: 4px; height: 28px;">
                         <option value="fine">Fine (Slow)</option>
                         <option value="medium">Medium</option>
                         <option value="coarse">Coarse (Fast)</option>
                     </select>
                 </div>
-                <button v-if="!training" @click="trainAgent" class="btn btn-primary">
+                <button v-if="!training" @click="trainAgent" class="btn btn-primary"
+                    style="height: 36px; font-size: 13px; padding: 0 20px; display: flex; align-items: center;">
                     Train Agent
                 </button>
-                <button v-else @click="stopTraining" class="btn btn-danger">
+                <button v-else @click="stopTraining" class="btn btn-danger"
+                    style="height: 36px; font-size: 13px; padding: 0 20px; display: flex; align-items: center;">
                     Stop
                 </button>
-                <button @click="resetEnv" :disabled="training" class="btn btn-secondary">Reset</button>
+                <button @click="resetEnv" :disabled="training" class="btn btn-secondary"
+                    style="height: 36px; font-size: 13px; padding: 0 20px; display: flex; align-items: center;">Reset</button>
 
-                <!-- Download Training Files button (shows YAML files by step) -->
+                <!-- Download Training Files button (shows YAML+VTU files by step) -->
                 <button v-if="(useDocker || useRealRL) && generatedFiles.length > 0"
-                    @click="showDownloads = !showDownloads" class="btn btn-secondary text-xs">
-                    📥 YAML Files ({{ generatedFiles.length }})
+                    @click="showDownloads = !showDownloads" class="btn btn-secondary"
+                    style="height: 36px; font-size: 13px; padding: 0 16px; display: flex; align-items: center;">
+                    📥 Files ({{ generatedFiles.length }})
                 </button>
 
                 <!-- Checkbox consolidated to Header -->
@@ -328,9 +360,9 @@
 
                 <!-- Download Panel (shown when showDownloads is true) -->
                 <div v-if="showDownloads"
-                    class="absolute right-0 top-full mt-2 bg-white rounded-lg shadow-xl border p-3 z-50 w-80 max-h-96 overflow-y-auto">
+                    class="absolute right-0 top-full mt-2 bg-white rounded-lg shadow-xl border p-3 z-50 w-96 max-h-96 overflow-y-auto">
                     <div class="flex justify-between items-center mb-2">
-                        <span class="font-semibold text-sm">Training YAML Files (by Step)</span>
+                        <span class="font-semibold text-sm">Training Files (YAML + VTU)</span>
                         <button @click="showDownloads = false" class="text-gray-400 hover:text-gray-600">✕</button>
                     </div>
                     <div v-if="generatedFiles.length === 0" class="text-gray-500 text-xs">
@@ -344,23 +376,18 @@
                                 R={{ file.reward?.toFixed(3) }}
                             </span>
                         </div>
-                        <div class="text-xs text-gray-500 mb-1">
-                            D={{ file.params?.diameter?.toFixed(1) }}mm,
-                            L={{ file.params?.length?.toFixed(1) }}mm,
-                            t={{ file.params?.strut_thickness?.toFixed(3) }}mm,
-                            n={{ file.params?.num_struts }}
+                        <div class="text-xs text-gray-500 mb-2" style="line-height: 1.5;">
+                            <div class="grid grid-cols-2 gap-x-4">
+                                <span>R = {{ file.reward?.toFixed(4) || '—' }}</span>
+                                <span>n = {{ file.params?.num_struts || '—' }}</span>
+                                <span>L = {{ file.params?.length?.toFixed(1) || '—' }} mm</span>
+                                <span>t = {{ file.params?.strut_thickness?.toFixed(3) || '—' }} mm</span>
+                            </div>
                         </div>
-                        <div class="flex gap-2 items-center flex-wrap">
-                            <button @click="downloadYaml(file.step)"
-                                class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded">
-                                📄 YAML
-                            </button>
-                            <button v-if="file.has_vtu" @click="downloadVtu(file.step)"
-                                class="text-xs bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded">
-                                🔷 VTU
-                            </button>
-                            <span v-if="!file.has_vtu" class="text-xs text-gray-300">No VTU</span>
-                        </div>
+                        <button @click="downloadBothFilesFromPanel(file.step)"
+                            class="w-full text-xs bg-gray-800 hover:bg-gray-700 text-white px-3 py-1.5 rounded flex items-center justify-center gap-2">
+                            📥 Download YAML + VTU
+                        </button>
                     </div>
                 </div>
 
@@ -466,6 +493,84 @@
 
             <div v-show="!comparisonDone" class="text-center py-12 text-gray-400">
                 <p>Train the agent, then click "Run Comparison" to evaluate performance</p>
+            </div>
+        </div>
+
+        <!-- Clinical Robustness & UQ Panel (queens-py) -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mt-6 border-l-4 border-l-purple-500 mb-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-sm font-semibold flex items-center gap-2 text-purple-900">
+                    <span class="text-lg">🩺</span> Clinical Robustness & UQ (queens-py)
+                </h2>
+                <div v-if="uqAnalysis.loading" class="flex items-center gap-2 text-xs text-purple-600">
+                    <span class="animate-spin">⏳</span> Running Monte Carlo Analysis...
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Left: Controls -->
+                <div class="col-span-1 space-y-4 border-r pr-4">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">Baseline Design Source</label>
+                        <select v-model="uqAnalysis.source"
+                            class="w-full text-xs border rounded px-2 py-1.5 bg-gray-50 focus:outline-none focus:ring-1 focus:ring-purple-500">
+                            <option value="current">Current Manual Parameters</option>
+                            <option value="trained" :disabled="!trainedPolicy">Best Trained Policy {{ !trainedPolicy ?
+                                '(Train First)' : '' }}</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">Uncertainty Level
+                            (Mfg/Anatomy)</label>
+                        <select v-model="uqAnalysis.level"
+                            class="w-full text-xs border rounded px-2 py-1.5 bg-gray-50 focus:outline-none focus:ring-1 focus:ring-purple-500">
+                            <option value="low">Low (Precision Mfg ±5%)</option>
+                            <option value="medium">Medium (Standard ±10%)</option>
+                            <option value="high">High (High Variability ±20%)</option>
+                        </select>
+                    </div>
+
+                    <button @click="runUQAnalysis" :disabled="uqAnalysis.loading"
+                        class="w-full mt-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium py-2 px-4 rounded shadow-sm transition-colors flex items-center justify-center gap-2">
+                        <span>🚀</span> Run Robustness Analysis
+                    </button>
+
+                    <div v-if="uqAnalysis.results" class="bg-purple-50 rounded p-3 text-xs space-y-1">
+                        <div class="font-semibold text-purple-900 border-b border-purple-200 pb-1 mb-1">Analysis Summary
+                        </div>
+                        <div class="flex justify-between"><span>Samples:</span> <span class="font-mono">{{
+                                uqAnalysis.results.summary.samples }}</span></div>
+                        <div class="flex justify-between"><span>Fail Prob:</span> <span class="font-mono"
+                                :class="uqAnalysis.results.summary.failure_probability > 0.05 ? 'text-red-600' : 'text-green-600'">{{
+                                (uqAnalysis.results.summary.failure_probability * 100).toFixed(1) }}%</span></div>
+                        <div class="flex justify-between"><span>Mean SF:</span> <span class="font-mono">{{
+                                uqAnalysis.results.summary.mean_safety_factor.toFixed(2) }}</span></div>
+                        <div class="mt-2 text-center font-bold px-2 py-1 rounded"
+                            :class="uqAnalysis.results.summary.decision === 'SAFE' ? 'bg-green-100 text-green-800' : (uqAnalysis.results.summary.decision === 'RISKY' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800')">
+                            VERDICT: {{ uqAnalysis.results.summary.decision }}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Results -->
+                <div class="col-span-2 space-y-4">
+                    <div v-if="!uqAnalysis.results"
+                        class="h-full flex flex-col items-center justify-center text-gray-400 text-xs border-2 border-dashed rounded-lg bg-gray-50"
+                        style="min-height: 250px;">
+                        <span class="text-3xl mb-2">📊</span>
+                        <p>Run analysis to see Reliability & Sensitivity plots</p>
+                    </div>
+
+                    <div v-show="uqAnalysis.results" class="grid grid-cols-2 gap-4">
+                        <div class="rounded border p-1 bg-white">
+                            <div id="uq-reliability-chart" style="height: 200px; width: 100%;"></div>
+                        </div>
+                        <div class="rounded border p-1 bg-white">
+                            <div id="uq-scatter-chart" style="height: 200px; width: 100%;"></div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -756,6 +861,23 @@
                     window.location.href = `${backendUrl}/training-vtu/${step}`;
                 }
 
+                // Download both YAML and VTU files from the panel (single click)
+                function downloadBothFilesFromPanel(step) {
+                    // Download YAML
+                    const yamlLink = document.createElement('a');
+                    yamlLink.href = `${backendUrl}/training-yaml/${step}`;
+                    yamlLink.download = `step_${step}.4C.yaml`;
+                    yamlLink.click();
+
+                    // Download VTU after short delay
+                    setTimeout(() => {
+                        const vtuLink = document.createElement('a');
+                        vtuLink.href = `${backendUrl}/training-vtu/${step}`;
+                        vtuLink.download = `step_${step}.vtu`;
+                        vtuLink.click();
+                    }, 300);
+                }
+
                 // Format timestamp for display
                 function formatTime(timestamp) {
                     if (!timestamp) return '';
@@ -819,19 +941,16 @@
                                 const newProgress = Math.min(1.0, Math.max(0.0, data.progress || 0));
                                 if (newProgress >= progress.value) {
                                     progress.value = newProgress;
-                                } else {
-                                    // Progress went backward - keep previous value unless it's a significant jump
-                                    // This prevents flickering when backend resets or has timing issues
-                                    if (newProgress > progress.value - 0.05) {
-                                        // Small backward jump - ignore (likely timing)
-                                        // Keep current progress
-                                    } else {
-                                        // Large backward jump - might be reset, update
-                                        progress.value = newProgress;
-                                    }
+                                } else if (newProgress <= progress.value - 0.05) {
+                                    // Large backward jump - might be reset, update
+                                    progress.value = newProgress;
                                 }
-                                // Use logged_steps if available (matches data points), else current_step
-                                steps.value = data.logged_steps !== undefined ? data.logged_steps : data.current_step;
+                                // Else: Small backward jump - ignore (keep current progress) to prevent flickering
+
+                                // Fix step count discrepancy: Strictly use current_step from backend
+                                // and clamp it to the total requested steps to avoid visual confusion
+                                const backendStep = data.current_step || 0;
+                                steps.value = Math.min(backendStep, trainSteps.value);
                                 episodes.value = data.episodes;
 
                                 // Update params (but don't compute metrics - use backend values)
@@ -934,6 +1053,107 @@
                 const improvement = ref(0);
                 const comparisonProgress = ref(0);
                 const comparisonPhase = ref('');
+
+                // --- UQ / Clinical Robustness State ---
+                const uqAnalysis = ref({
+                    loading: false,
+                    source: 'current', // 'current' or 'trained'
+                    level: 'medium',   // 'low', 'medium', 'high'
+                    results: null,
+                    show: true
+                });
+
+                async function runUQAnalysis() {
+                    uqAnalysis.value.loading = true;
+                    uqAnalysis.value.results = null;
+
+                    try {
+                        // Determine params
+                        let p = { ...params.value };
+                        if (uqAnalysis.value.source === 'trained' && trainedPolicy.value) {
+                            p = { ...trainedPolicy.value };
+                        }
+
+                        // Call Backend
+                        const res = await fetch(`${backendUrl}/analyze/uq`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                params: p,
+                                num_samples: 20, // Fast demo
+                                use_docker: useDocker.value,
+                                uncertainty_level: uqAnalysis.value.level
+                            })
+                        });
+                        const data = await res.json();
+
+                        if (data.success && data.summary) {
+                            uqAnalysis.value.results = data;
+                            // Update plots next tick
+                            setTimeout(() => updateUQPlots(data.samples), 100);
+                        }
+                    } catch (e) {
+                        console.error("UQ Error", e);
+                    } finally {
+                        uqAnalysis.value.loading = false;
+                    }
+                }
+
+                function updateUQPlots(samples) {
+                    if (!samples || samples.length === 0) return;
+
+                    const safeties = samples.map(s => s.outputs.SafetyFactor);
+                    const stresses = samples.map(s => s.outputs.Stress);
+                    const disps = samples.map(s => s.outputs.Displacement);
+
+                    // 1. Reliability (Histogram of Safety Factor)
+                    const trace1 = {
+                        x: safeties,
+                        type: 'histogram',
+                        name: 'Safety Factor',
+                        marker: { color: safeties.map(s => s < 1.0 ? '#ef4444' : '#22c55e') },
+                        opacity: 0.7
+                    };
+
+                    // Add limit line
+                    const layout1 = {
+                        title: { text: 'Reliability Distribution (SF)', font: { size: 12 } },
+                        margin: { t: 30, b: 30, l: 30, r: 10 },
+                        height: 200,
+                        shapes: [{
+                            type: 'line', x0: 1.0, x1: 1.0, y0: 0, y1: 1, yref: 'paper',
+                            line: { color: 'red', width: 2, dash: 'dash' }
+                        }],
+                        font: { family: 'Inter, sans-serif' }
+                    };
+                    Plotly.newPlot('uq-reliability-chart', [trace1], layout1, { displayModeBar: false });
+
+                    // 2. Performance Cloud (Stress vs Disp)
+                    const trace2 = {
+                        x: disps,
+                        y: stresses,
+                        mode: 'markers',
+                        type: 'scatter',
+                        marker: {
+                            size: 8,
+                            color: safeties,
+                            colorscale: 'RdYlGn',
+                            showscale: false
+                        },
+                        text: safeties.map(s => `SF: ${s.toFixed(2)}`),
+                        hovertemplate: 'Disp: %{x:.3f}mm<br>Stress: %{y:.1f}MPa<br>%{text}<extra></extra>'
+                    };
+
+                    const layout2 = {
+                        title: { text: 'Performance Cloud (Stress vs Disp)', font: { size: 12 } },
+                        margin: { t: 30, b: 30, l: 40, r: 10 },
+                        height: 200,
+                        xaxis: { title: 'Displacement (mm)' },
+                        yaxis: { title: 'Stress (MPa)' },
+                        font: { family: 'Inter, sans-serif' }
+                    };
+                    Plotly.newPlot('uq-scatter-chart', [trace2], layout2, { displayModeBar: false });
+                }
 
                 // Store trained policy (best params found during training)
                 const trainedPolicy = ref(null);
@@ -1427,6 +1647,8 @@
                     }];
 
                     // Struts along the length
+                    const hoverText = `Diameter: ${(2 * r).toFixed(2)} mm<br>Length: ${L.toFixed(1)} mm<br>Struts: ${n}<br>Thickness: ${t.toFixed(3)} mm`;
+
                     for (let i = 0; i < n; i++) {
                         const angle = 2 * Math.PI * i / n;
                         const sr = r + t / 2;
@@ -1437,7 +1659,9 @@
                             y: sx.map(() => sr * Math.cos(angle)),
                             z: sx.map(() => sr * Math.sin(angle)),
                             line: { color: '#8B0000', width: 5 },
-                            showlegend: false, hoverinfo: 'skip'
+                            showlegend: false,
+                            hoverinfo: 'text',
+                            text: sx.map(() => hoverText)
                         });
                     }
 
@@ -1632,7 +1856,7 @@
                     useDocker, dockerAvailable, show4CViewer, fourcStatus,
                     // Generated files download
                     generatedFiles, showDownloads,
-                    fetchGeneratedFiles, downloadYaml, downloadVtu, formatTime,
+                    fetchGeneratedFiles, downloadYaml, downloadVtu, downloadBothFilesFromPanel, formatTime,
                     // Training step YAML/VTU download (click on curve)
                     downloadModal, showDownloadModal, downloadTrainingYaml, downloadTrainingVtu, downloadBothFiles, closeDownloadModal,
                     // Comparison

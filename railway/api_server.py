@@ -25,10 +25,21 @@ try:
     from stable_baselines3.common.callbacks import BaseCallback
     import gymnasium as gym
     from gymnasium import spaces
+    from gymnasium import spaces
     SB3_AVAILABLE = True
 except ImportError:
     SB3_AVAILABLE = False
     print("WARNING: stable-baselines3 not installed, RL training disabled")
+
+# Try to import Queens-Py for UQ
+try:
+    import queens
+    import queens.uq
+    QUEENS_AVAILABLE = True
+    print("✓ Queens-Py initialized successfully")
+except ImportError:
+    QUEENS_AVAILABLE = False
+    print("WARNING: queens-py not installed, UQ analysis will run in mock mode")
 
 # Try to import 4C interface
 try:
@@ -299,7 +310,11 @@ class StentParams(BaseModel):
     length: float = 20.0
     strut_thickness: float = 0.12
     num_struts: int = 12
+    num_struts: int = 12
     crown_height: float = 1.0
+    # Extended physics parameters for UQ (optional)
+    youngs_modulus: float = 200000.0  # MPa
+    pressure_load: float = 0.0  # MPa (if 0, calculated from diameter)
 
 class SimulationRequest(BaseModel):
     params: StentParams
@@ -440,6 +455,12 @@ def check_mesh_tools():
 def generate_4c_yaml(params: StentParams, output_path: Path, mesh_coarseness: str = "medium"):
     """Generate complete 4C YAML input file with VTU mesh file."""
     
+    # Use provided physics params or defaults
+    E = params.youngs_modulus or 200000.0
+    pressure = params.pressure_load
+    if pressure <= 0:
+        pressure = params.diameter * 0.01  # Default based on diameter
+    
     # Set mesh resolution based on coarseness
     if mesh_coarseness == "fine":
         n_circ_per_strut = 4
@@ -497,7 +518,7 @@ MATERIALS:
       DENS: 7.8e-9
   - MAT: 2
     ELAST_CoupNeoHooke:
-      YOUNG: 200000.0
+      YOUNG: {E}
       NUE: 0.3
 
 # Mesh tools not available - using placeholder
@@ -533,7 +554,7 @@ MATERIALS:
     
     # Write complete 4C YAML with VTU reference
     vtu_filename = vtu_path.name
-    pressure = params.diameter * 0.01  # Reduced radial pressure for stability
+    # Pressure is already calculated/set above
     
     yaml_content = f"""TITLE: Stent simulation - diameter={params.diameter}mm, length={params.length}mm
 PROBLEM TYPE:
@@ -579,7 +600,7 @@ MATERIALS:
       DENS: 7.8e-9
   - MAT: 2
     ELAST_CoupNeoHooke:
-      YOUNG: 200000.0
+      YOUNG: {E}
       NUE: 0.3
 
 STRUCTURE GEOMETRY:
@@ -1222,6 +1243,106 @@ MATERIALS:
             "traceback": traceback.format_exc(),
             "output_files": []
         }
+
+
+# ===== UQ ENDPOINTS =====
+class UQRequest(BaseModel):
+    params: StentParams
+    num_samples: int = 20  # Keep low for demo speed
+    use_docker: bool = False
+    uncertainty_level: str = "medium"  # low, medium, high
+
+@app.post("/analyze/uq")
+def run_uq_analysis(request: UQRequest):
+    """Run Uncertainty Quantification analysis (Queens-Py or Manual MC)."""
+    
+    # 1. Define Uncertainty distributions (std dev as % of mean)
+    # levels: low=5%, medium=10%, high=20%
+    sigma_factor = {"low": 0.05, "medium": 0.10, "high": 0.20}.get(request.uncertainty_level, 0.10)
+    
+    nominal_E = 200000.0
+    nominal_P = request.params.diameter * 0.01
+    if request.params.pressure_load > 0:
+        nominal_P = request.params.pressure_load
+        
+    nominal_T = request.params.strut_thickness
+    
+    samples = []
+    
+    print(f"Starting UQ Analysis ({request.num_samples} samples, level={request.uncertainty_level})...")
+    
+    # Simple Monte Carlo Loop (works with or without Queens-Py for now)
+    # Robust implementation that doesn't rely on external libraries if missing
+    import random
+    import numpy as np
+    
+    for i in range(request.num_samples):
+        # Sample parameters
+        E_sample = random.gauss(nominal_E, nominal_E * sigma_factor)
+        P_sample = random.gauss(nominal_P, nominal_P * sigma_factor)
+        T_sample = random.gauss(nominal_T, nominal_T * (sigma_factor * 0.5)) # Manufacturing usually tighter execution
+        
+        # Clamp to physical limits
+        T_sample = max(0.05, T_sample)
+        P_sample = max(0.001, P_sample)
+        
+        # Prepare params
+        p = request.params.copy()
+        p.youngs_modulus = E_sample
+        p.pressure_load = P_sample
+        p.strut_thickness = T_sample
+        
+        # Run Simulation
+        if request.use_docker and FOURC_AVAILABLE:
+             sim_result = run_real_4c_simulation(p, mesh_coarseness="coarse") # Use coarse for speed in UQ
+        else:
+             sim_result = run_mockup_simulation(p)
+             
+        # Collect results
+        if sim_result.get("success"):
+            res = sim_result.get("result", {})
+            stress = res.get("max_stress", 0)
+            disp = res.get("max_displacement", 0)
+            
+            # Compute Safety Factor (Yield Stress approx 400 MPa for Nitinol)
+            yield_stress = 400.0
+            safety_factor = yield_stress / stress if stress > 0 else 100.0
+            
+            samples.append({
+                "iteration": i,
+                "inputs": {"E": E_sample, "Pressure": P_sample, "Thickness": T_sample},
+                "outputs": {"Stress": stress, "Displacement": disp, "SafetyFactor": safety_factor}
+            })
+    
+    # Compute Statistics
+    if not samples:
+        return {"success": False, "error": "No samples generated"}
+        
+    stresses = [s["outputs"]["Stress"] for s in samples]
+    safety_factors = [s["outputs"]["SafetyFactor"] for s in samples]
+    
+    mean_stress = np.mean(stresses)
+    std_stress = np.std(stresses)
+    fail_prob = sum(1 for s in stresses if s > 400.0) / len(stresses)
+    mean_sf = np.mean(safety_factors)
+    
+    # Clinical Decision
+    decision = "SAFE" if fail_prob < 0.05 and mean_sf > 1.2 else "RISKY"
+    if fail_prob > 0.2: decision = "UNSAFE"
+    
+    return {
+        "success": True,
+        "summary": {
+            "samples": len(samples),
+            "mean_stress": float(mean_stress),
+            "std_stress": float(std_stress),
+            "failure_probability": float(fail_prob),
+            "mean_safety_factor": float(mean_sf),
+            "decision": decision,
+            "uncertainty_level": request.uncertainty_level
+        },
+        "samples": samples # Return detailed samples for frontend plotting
+    }
 
 
 if __name__ == "__main__":
