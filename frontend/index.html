@@ -1849,7 +1849,7 @@
                 return {
                     params, metrics, currentReward, episodeRewards, rewardHistory,
                     episodes, steps, avgReward, training, progress, trainSteps, meshCoarseness,
-                    trainAgent, stopTraining, resetEnv,
+                    trainAgent, stopTraining, resetEnv, trainedPolicy,
                     // Real RL
                     useRealRL, backendConnected,
                     // 4C Docker Mode
@@ -1861,6 +1861,8 @@
                     downloadModal, showDownloadModal, downloadTrainingYaml, downloadTrainingVtu, downloadBothFiles, closeDownloadModal,
                     // Comparison
                     comparing, comparisonDone, comparisonEpisodes,
+                    // UQ
+                    uqAnalysis, runUQAnalysis,
                     randomMean, trainedMean, improvement,
                     comparisonProgress, comparisonPhase,
                     runComparison,
