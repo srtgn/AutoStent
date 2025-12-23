@@ -496,14 +496,14 @@
             </div>
         </div>
 
-        <!-- Virtual Patient Cohort Simulation -->
+        <!-- Queens-Py Scientific Analysis Panel -->
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mt-6 border-l-4 border-l-purple-500 mb-6">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-sm font-semibold flex items-center gap-2 text-purple-900 uppercase tracking-wide">
-                    Virtual Patient Cohort & Robustness
+                    Queens-Py
                 </h2>
                 <div v-if="uqAnalysis.loading" class="flex items-center gap-2 text-xs text-purple-600 font-medium">
-                    Simulating Virtual Cohort...
+                    Computing Samples...
                 </div>
             </div>
 
@@ -511,46 +511,51 @@
                 <!-- Left: Controls -->
                 <div class="col-span-1 space-y-4 border-r pr-4">
                     <div>
-                        <label class="block text-xs font-medium text-gray-500 mb-1 uppercase">Base Stent Design
-                            (Input)</label>
+                        <label class="block text-xs font-medium text-gray-500 mb-1 uppercase">Stent Design Input</label>
                         <select v-model="uqAnalysis.source"
                             class="w-full text-xs border rounded px-2 py-1.5 bg-gray-50 focus:outline-none focus:ring-1 focus:ring-purple-500">
-                            <option value="current">Current Configuration (Left Panel)</option>
-                            <option value="trained" :disabled="!trainedPolicy">Optimized Policy (Best Result) {{
+                            <option value="current">Current Parameters (Manual)</option>
+                            <option value="trained" :disabled="!trainedPolicy">Optimized Policy (RL Agent) {{
                                 !trainedPolicy ?
                                 '(Train First)' : '' }}</option>
                         </select>
                     </div>
 
                     <div>
-                        <label class="block text-xs font-medium text-gray-500 mb-1 uppercase">Patient Variability
-                            (Anatomy/BP)</label>
+                        <label class="block text-xs font-medium text-gray-500 mb-1 uppercase">Parameter Uncertainty
+                            (Input Distributions)</label>
                         <select v-model="uqAnalysis.level"
                             class="w-full text-xs border rounded px-2 py-1.5 bg-gray-50 focus:outline-none focus:ring-1 focus:ring-purple-500">
-                            <option value="low">Low (Standard Population)</option>
-                            <option value="medium">Medium (Heterogeneous Group)</option>
-                            <option value="high">High (High-Risk/Complex Anatomy)</option>
+                            <option value="low">Low Variance (σ = 5%)</option>
+                            <option value="medium">Medium Variance (σ = 10%)</option>
+                            <option value="high">High Variance (σ = 20%)</option>
                         </select>
                     </div>
 
                     <button @click="runUQAnalysis" :disabled="uqAnalysis.loading"
                         class="w-full mt-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium py-2 px-4 rounded shadow-sm transition-colors flex items-center justify-center gap-2 uppercase tracking-wide">
-                        Run Robustness Analysis
+                        Run UQ Analysis
                     </button>
 
                     <div v-if="uqAnalysis.results" class="bg-purple-50 rounded p-3 text-xs space-y-1">
-                        <div class="font-semibold text-purple-900 border-b border-purple-200 pb-1 mb-1 uppercase">Cohort
-                            Analysis Results</div>
-                        <div class="flex justify-between"><span>Virtual Patients:</span> <span class="font-mono">{{
+                        <div class="font-semibold text-purple-900 border-b border-purple-200 pb-1 mb-1 uppercase">
+                            Statistical Summary</div>
+                        <div class="flex justify-between"><span>N (Patients):</span> <span class="font-mono">{{
                                 uqAnalysis.results.summary.samples }}</span></div>
-                        <div class="flex justify-between"><span>Failure Risk:</span> <span class="font-mono"
-                                :class="uqAnalysis.results.summary.failure_probability > 0.05 ? 'text-red-600' : 'text-green-600'">{{
+                        <div class="flex justify-between"><span>Failure Prob:</span> <span class="font-mono">{{
                                 (uqAnalysis.results.summary.failure_probability * 100).toFixed(1) }}%</span></div>
-                        <div class="flex justify-between"><span>Avg Safety Factor:</span> <span class="font-mono">{{
-                                uqAnalysis.results.summary.mean_safety_factor.toFixed(2) }}</span></div>
-                        <div class="mt-2 text-center font-bold px-2 py-1 rounded"
-                            :class="uqAnalysis.results.summary.decision === 'SAFE' ? 'bg-green-100 text-green-800' : (uqAnalysis.results.summary.decision === 'RISKY' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800')">
-                            CLINICAL VERDICT: {{ uqAnalysis.results.summary.decision }}
+                        <div class="flex justify-between"><span title="Safety Factor">Mean SF (μ):</span> <span
+                                class="font-mono">{{ uqAnalysis.results.summary.mean_safety_factor.toFixed(2) }}</span>
+                        </div>
+                        <div class="flex justify-between"><span title="Standard Deviation">Std Dev (σ):</span> <span
+                                class="font-mono">{{ uqAnalysis.results.summary.std_safety_factor.toFixed(2) }}</span>
+                        </div>
+                        <div class="mt-2 pt-1 border-t border-purple-200">
+                            <span class="block text-gray-500 mb-0.5">95% Confidence Interval:</span>
+                            <div class="font-mono text-center bg-white rounded border px-1">
+                                [{{ uqAnalysis.results.summary.ci_95_lower.toFixed(2) }} - {{
+                                uqAnalysis.results.summary.ci_95_upper.toFixed(2) }}]
+                            </div>
                         </div>
                     </div>
                 </div>

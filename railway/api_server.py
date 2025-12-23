@@ -1321,24 +1321,29 @@ def run_uq_analysis(request: UQRequest):
     stresses = [s["outputs"]["Stress"] for s in samples]
     safety_factors = [s["outputs"]["SafetyFactor"] for s in samples]
     
-    mean_stress = np.mean(stresses)
-    std_stress = np.std(stresses)
+    mean_stress = float(np.mean(stresses))
+    std_stress = float(np.std(stresses))
     fail_prob = sum(1 for s in stresses if s > 400.0) / len(stresses)
-    mean_sf = np.mean(safety_factors)
     
-    # Clinical Decision
-    decision = "SAFE" if fail_prob < 0.05 and mean_sf > 1.2 else "RISKY"
-    if fail_prob > 0.2: decision = "UNSAFE"
+    mean_sf = float(np.mean(safety_factors))
+    std_sf = float(np.std(safety_factors))
+    
+    # Calculate 95% Confidence Interval for Safety Factor
+    # CI = mean +/- 1.96 * std
+    ci_lower = mean_sf - 1.96 * std_sf
+    ci_upper = mean_sf + 1.96 * std_sf
     
     return {
         "success": True,
         "summary": {
             "samples": len(samples),
-            "mean_stress": float(mean_stress),
-            "std_stress": float(std_stress),
+            "mean_stress": mean_stress,
+            "std_stress": std_stress,
             "failure_probability": float(fail_prob),
-            "mean_safety_factor": float(mean_sf),
-            "decision": decision,
+            "mean_safety_factor": mean_sf,
+            "std_safety_factor": std_sf,
+            "ci_95_lower": float(ci_lower),
+            "ci_95_upper": float(ci_upper),
             "uncertainty_level": request.uncertainty_level
         },
         "samples": samples # Return detailed samples for frontend plotting
