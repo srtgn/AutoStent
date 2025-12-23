@@ -222,7 +222,8 @@ if SB3_AVAILABLE:
             reward = self.locals.get('rewards', [0])[0]
             self.ep_reward += reward
             
-            if self.n_calls % 2 == 0:  # Log every 2 steps for smoother curves
+            # Log every step to ensure graph matches step counter 1:1
+            if True: 
                 with state_lock:
                     training_state["current_step"] = min(self.n_calls, self.total_steps)
                     training_state["progress"] = self.n_calls / self.total_steps
@@ -1332,6 +1333,29 @@ def run_uq_analysis(request: UQRequest):
     # CI = mean +/- 1.96 * std
     ci_lower = mean_sf - 1.96 * std_sf
     ci_upper = mean_sf + 1.96 * std_sf
+
+    # Sensitivity Analysis (Correlation Coefficients)
+    input_keys = ["Diameter", "Thickness", "YoungsModulus", "Pressure"]
+    sensitivity = {}
+    
+    # Extract input arrays
+    input_arrays = {k: [] for k in input_keys}
+    sf_array = []
+    
+    for s in samples:
+        input_arrays["Diameter"].append(s["inputs"]["diameter"])
+        input_arrays["Thickness"].append(s["inputs"]["strut_thickness"])
+        input_arrays["YoungsModulus"].append(s["inputs"]["youngs_modulus"])
+        input_arrays["Pressure"].append(s["inputs"]["pressure"])
+        sf_array.append(s["outputs"]["SafetyFactor"])
+        
+    # Calculate correlation (simple sensitivity index)
+    for k in input_keys:
+        if len(set(input_arrays[k])) > 1: # Avoid division by zero if constant
+            corr = np.corrcoef(input_arrays[k], sf_array)[0, 1]
+            sensitivity[k] = float(corr) if not np.isnan(corr) else 0.0
+        else:
+            sensitivity[k] = 0.0
     
     return {
         "success": True,
@@ -1344,9 +1368,10 @@ def run_uq_analysis(request: UQRequest):
             "std_safety_factor": std_sf,
             "ci_95_lower": float(ci_lower),
             "ci_95_upper": float(ci_upper),
-            "uncertainty_level": request.uncertainty_level
+            "uncertainty_level": request.uncertainty_level,
+            "sensitivity_indices": sensitivity  # New field
         },
-        "samples": samples # Return detailed samples for frontend plotting
+        "samples": samples 
     }
 
 

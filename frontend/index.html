@@ -497,7 +497,7 @@
         </div>
 
         <!-- Queens-Py Scientific Analysis Panel -->
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mt-6 border-l-4 border-l-purple-500 mb-6">
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mt-6 mb-6">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-sm font-semibold flex items-center gap-2 text-purple-900 uppercase tracking-wide">
                     Queens-Py
@@ -505,6 +505,20 @@
                 <div v-if="uqAnalysis.loading" class="flex items-center gap-2 text-xs text-purple-600 font-medium">
                     Computing Samples...
                 </div>
+            </div>
+
+            <!-- Module Tabs -->
+            <div class="flex border-b border-gray-200 mb-4 space-x-4">
+                <button @click="uqAnalysis.module = 'uq'"
+                    class="pb-2 text-xs font-semibold uppercase tracking-wide border-b-2 transition-colors"
+                    :class="uqAnalysis.module === 'uq' ? 'border-purple-600 text-purple-800' : 'border-transparent text-gray-500 hover:text-gray-700'">
+                    Uncertainty Quantification
+                </button>
+                <button @click="uqAnalysis.module = 'sensitivity'"
+                    class="pb-2 text-xs font-semibold uppercase tracking-wide border-b-2 transition-colors"
+                    :class="uqAnalysis.module === 'sensitivity' ? 'border-purple-600 text-purple-800' : 'border-transparent text-gray-500 hover:text-gray-700'">
+                    Sensitivity Analysis
+                </button>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -538,23 +552,44 @@
                     </button>
 
                     <div v-if="uqAnalysis.results" class="bg-purple-50 rounded p-3 text-xs space-y-1">
-                        <div class="font-semibold text-purple-900 border-b border-purple-200 pb-1 mb-1 uppercase">
-                            Statistical Summary</div>
-                        <div class="flex justify-between"><span>N (Patients):</span> <span class="font-mono">{{
-                                uqAnalysis.results.summary.samples }}</span></div>
-                        <div class="flex justify-between"><span>Failure Prob:</span> <span class="font-mono">{{
-                                (uqAnalysis.results.summary.failure_probability * 100).toFixed(1) }}%</span></div>
-                        <div class="flex justify-between"><span title="Safety Factor">Mean SF (μ):</span> <span
-                                class="font-mono">{{ uqAnalysis.results.summary.mean_safety_factor.toFixed(2) }}</span>
+                        <!-- UQ Summary -->
+                        <div v-if="uqAnalysis.module === 'uq'">
+                            <div class="font-semibold text-purple-900 border-b border-purple-200 pb-1 mb-1 uppercase">
+                                Statistical Summary</div>
+                            <div class="flex justify-between"><span>N (Patients):</span> <span class="font-mono">{{
+                                    uqAnalysis.results.summary.samples }}</span></div>
+                            <div class="flex justify-between"><span>Failure Prob:</span> <span class="font-mono">{{
+                                    (uqAnalysis.results.summary.failure_probability * 100).toFixed(1) }}%</span></div>
+                            <div class="flex justify-between"><span title="Safety Factor">Mean SF (μ):</span> <span
+                                    class="font-mono">{{ uqAnalysis.results.summary.mean_safety_factor.toFixed(2)
+                                    }}</span></div>
+                            <div class="flex justify-between"><span title="Standard Deviation">Std Dev (σ):</span> <span
+                                    class="font-mono">{{ uqAnalysis.results.summary.std_safety_factor.toFixed(2)
+                                    }}</span></div>
+                            <div class="mt-2 pt-1 border-t border-purple-200">
+                                <span class="block text-gray-500 mb-0.5">95% Confidence Interval:</span>
+                                <div class="font-mono text-center bg-white rounded border px-1">
+                                    [{{ uqAnalysis.results.summary.ci_95_lower.toFixed(2) }} - {{
+                                    uqAnalysis.results.summary.ci_95_upper.toFixed(2) }}]
+                                </div>
+                            </div>
                         </div>
-                        <div class="flex justify-between"><span title="Standard Deviation">Std Dev (σ):</span> <span
-                                class="font-mono">{{ uqAnalysis.results.summary.std_safety_factor.toFixed(2) }}</span>
-                        </div>
-                        <div class="mt-2 pt-1 border-t border-purple-200">
-                            <span class="block text-gray-500 mb-0.5">95% Confidence Interval:</span>
-                            <div class="font-mono text-center bg-white rounded border px-1">
-                                [{{ uqAnalysis.results.summary.ci_95_lower.toFixed(2) }} - {{
-                                uqAnalysis.results.summary.ci_95_upper.toFixed(2) }}]
+
+                        <!-- Sensitivity Summary -->
+                        <div v-else>
+                            <div class="font-semibold text-purple-900 border-b border-purple-200 pb-1 mb-1 uppercase">
+                                Influence Ranking</div>
+                            <p class="mb-2 text-gray-500 italic">Parameters impacting Safety Factor:</p>
+                            <div v-for="(val, key) in uqAnalysis.results.summary.sensitivity_indices" :key="key"
+                                class="flex justify-between items-center mb-1">
+                                <span>{{ key }}:</span>
+                                <div class="flex items-center gap-1">
+                                    <span class="w-16 h-1 bg-gray-200 rounded overflow-hidden">
+                                        <div :class="val > 0 ? 'bg-green-500' : 'bg-red-500'" class="h-full"
+                                            :style="{ width: Math.abs(val) * 100 + '%' }"></div>
+                                    </span>
+                                    <span class="font-mono w-8 text-right">{{ val.toFixed(2) }}</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -569,12 +604,20 @@
                         <p>Run analysis to generate Reliability & Sensitivity plots</p>
                     </div>
 
-                    <div v-show="uqAnalysis.results" class="grid grid-cols-2 gap-4">
+                    <!-- UQ Charts -->
+                    <div v-show="uqAnalysis.results && uqAnalysis.module === 'uq'" class="grid grid-cols-2 gap-4">
                         <div class="rounded border p-1 bg-white">
-                            <div id="uq-reliability-chart" style="height: 200px; width: 100%;"></div>
+                            <div id="uq-reliability-chart" style="height: 300px; width: 100%;"></div>
                         </div>
                         <div class="rounded border p-1 bg-white">
-                            <div id="uq-scatter-chart" style="height: 200px; width: 100%;"></div>
+                            <div id="uq-scatter-chart" style="height: 300px; width: 100%;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Sensitivity Charts -->
+                    <div v-show="uqAnalysis.results && uqAnalysis.module === 'sensitivity'" class="h-full">
+                        <div class="rounded border p-1 bg-white h-full">
+                            <div id="uq-sensitivity-chart" style="height: 300px; width: 100%;"></div>
                         </div>
                     </div>
                 </div>
@@ -1067,7 +1110,8 @@
                     source: 'current', // 'current' or 'trained'
                     level: 'medium',   // 'low', 'medium', 'high'
                     results: null,
-                    show: true
+                    show: true,
+                    module: 'uq' // 'uq' or 'sensitivity'
                 });
 
                 async function runUQAnalysis() {
@@ -1097,7 +1141,12 @@
                         if (data.success && data.summary) {
                             uqAnalysis.value.results = data;
                             // Update plots next tick
-                            setTimeout(() => updateUQPlots(data.samples), 100);
+                            setTimeout(() => {
+                                updateUQPlots(data.samples);
+                                if (data.summary.sensitivity_indices) {
+                                    updateSensitivityPlot(data.summary.sensitivity_indices);
+                                }
+                            }, 100);
                         }
                     } catch (e) {
                         console.error("UQ Error", e);
@@ -1126,7 +1175,7 @@
                     const layout1 = {
                         title: { text: 'Reliability Distribution (SF)', font: { size: 12 } },
                         margin: { t: 30, b: 30, l: 30, r: 10 },
-                        height: 200,
+                        height: 300,
                         shapes: [{
                             type: 'line', x0: 1.0, x1: 1.0, y0: 0, y1: 1, yref: 'paper',
                             line: { color: 'red', width: 2, dash: 'dash' }
@@ -1154,12 +1203,39 @@
                     const layout2 = {
                         title: { text: 'Performance Cloud (Stress vs Disp)', font: { size: 12 } },
                         margin: { t: 30, b: 30, l: 40, r: 10 },
-                        height: 200,
-                        xaxis: { title: 'Displacement (mm)' },
-                        yaxis: { title: 'Stress (MPa)' },
+                        height: 300,
+                        xaxis: { title: 'Displacement (mm)', zeroline: false },
+                        yaxis: { title: 'Stress (MPa)', zeroline: false },
+                        hovermode: 'closest',
                         font: { family: 'Inter, sans-serif' }
                     };
                     Plotly.newPlot('uq-scatter-chart', [trace2], layout2, { displayModeBar: false });
+                }
+
+                function updateSensitivityPlot(indices) {
+                    if (!indices) return;
+
+                    const xValues = Object.keys(indices);
+                    const yValues = Object.values(indices);
+                    const colors = yValues.map(v => v > 0 ? '#22c55e' : '#ef4444'); // Green pos, Red neg
+
+                    const trace = {
+                        x: xValues,
+                        y: yValues,
+                        type: 'bar',
+                        marker: { color: colors },
+                        name: 'Correlation'
+                    };
+
+                    const layout = {
+                        title: { text: 'Parameter Sensitivity (Correlation with Safety)', font: { size: 12 } },
+                        margin: { t: 30, b: 30, l: 40, r: 10 },
+                        height: 300,
+                        yaxis: { title: 'Correlation Coefficient', range: [-1, 1] },
+                        font: { family: 'Inter, sans-serif' }
+                    };
+
+                    Plotly.newPlot('uq-sensitivity-chart', [trace], layout, { displayModeBar: false });
                 }
 
                 // Store trained policy (best params found during training)
