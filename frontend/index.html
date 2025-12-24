@@ -346,11 +346,7 @@
                     style="height: 36px; font-size: 13px; padding: 0 20px; display: flex; align-items: center;">Reset</button>
 
                 <!-- Download Training Files button (shows YAML+VTU files by step) -->
-                <button v-if="!training && (useDocker || useRealRL) && generatedFiles.length > 0"
-                    @click="showDownloads = !showDownloads" class="btn btn-secondary"
-                    style="height: 36px; font-size: 13px; padding: 0 16px; display: flex; align-items: center;">
-                    📥 Files ({{ generatedFiles.length }})
-                </button>
+                <!-- Download Training Files button removed -->
 
                 <!-- Checkbox consolidated to Header -->
 
