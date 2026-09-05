@@ -2,31 +2,47 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A research pipeline in which a reinforcement-learning policy designs endovascular stents by
-repeatedly driving a real multiphysics solver — [4C Multiphysics](https://www.4c-multiphysics.org/) —
-and learning from what comes back.
+A reinforcement-learning agent designs endovascular stents by driving a real multiphysics solver —
+[4C Multiphysics](https://www.4c-multiphysics.org/) — and learning from the results.
 
-Every step of an episode turns a policy action into a parametric geometry, meshes it, writes a 4C
-input deck, runs the solver in its own container, parses the VTU field output and converts the
-mechanics into a reward. The loop is closed, containerised and exposed as a FastAPI service with a
-browser front end, so a study can be started, given a fidelity level and watched without touching
-Python.
+The agent proposes a design. The pipeline meshes it, runs 4C in a container, reads the stresses
+back and turns them into a reward. Repeat. Everything runs behind a FastAPI service with a browser
+front end, so a study can be started and watched without touching Python.
 
 ![Workspace](docs/figures/workspace.png)
 
 ## The loop
 
-| Stage | What happens |
-|---|---|
-| Action → parameters | 7-D continuous action in [−1, 1], applied as bounded relative changes to diameter, length, strut thickness, strut width, strut count, crown height and crown radius; clipped to admissible ranges |
-| Parameters → mesh | B-spline stent geometry sampled into a cylindrical hex8 mesh, written as VTU (`railway/mesh_generator.py`) |
-| Mesh → input deck | 4C YAML deck generated from the same parameter objects — mesh reference, material, boundary conditions, solver settings (`autostent/automation/yaml_generator.py`) |
-| Run | `fourc` executed as a subprocess under a timeout, inside an image built on `ghcr.io/4c-multiphysics/4c` (`railway/Dockerfile`) |
-| Result → mechanics | VTU parsed; von Mises stress, max displacement, max principal strain, convergence status and residual norm extracted (`railway/vtu_parser.py`) |
-| Mechanics → reward | Normalised weighted reward penalising stress, displacement and strain and rewarding convergence (`autostent/rl/stent_env.py`) |
+```mermaid
+flowchart LR
+    A([PPO agent]) -->|7 actions| B[Design<br/>parameters]
+    B --> C[Hex8 mesh<br/>VTU]
+    C --> D[4C input<br/>deck]
+    D --> E[[4C solver<br/>in a container]]
+    E --> F[VTU<br/>results]
+    F --> G[Stress<br/>displacement<br/>strain]
+    G -->|reward + 12-number observation| A
+```
 
-Observation: 12-D (7 normalised design parameters, 3 normalised result quantities, converged flag,
-residual norm). Agent: PPO from Stable-Baselines3.
+One episode is up to 50 steps. Each step:
+
+1. **The agent acts.** It outputs 7 numbers in [−1, 1]. Each nudges one design parameter: diameter, length, strut thickness, strut width, strut count, crown height, crown radius. Values stay inside their allowed ranges.
+2. **The design becomes a mesh.** A B-spline stent is sampled into a cylindrical hex8 mesh and written as VTU.
+3. **The mesh becomes a solver deck.** A 4C YAML file is generated from the same parameters — mesh, material, boundary conditions, solver settings. Nothing is hand-edited.
+4. **4C runs.** As a subprocess, under a timeout, inside a container built on the official 4C image.
+5. **The result is read.** The VTU output is parsed into von Mises stress, displacement, strain, and whether the run converged.
+6. **The result becomes a reward.** Lower stress, displacement and strain score higher; convergence is rewarded. A failed run is data, not an exception.
+7. **The agent observes.** 12 numbers come back: the 7 parameters, 3 mechanics values, and 2 convergence indicators.
+
+| Step | Code |
+|---|---|
+| mesh | `railway/mesh_generator.py` |
+| deck | `autostent/automation/yaml_generator.py` |
+| run | `railway/Dockerfile` · `autostent/simulation/fourc_interface.py` |
+| parse | `railway/vtu_parser.py` |
+| reward · environment | `autostent/rl/stent_env.py` (Gymnasium) |
+
+Agent: PPO from Stable-Baselines3.
 
 ## Does the agent learn?
 
