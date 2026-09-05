@@ -15,13 +15,14 @@ front end, so a study can be started and watched without touching Python.
 
 ```mermaid
 flowchart LR
-    A([PPO agent]) -->|7 actions| B[Design<br/>parameters]
-    B --> C[Hex8 mesh<br/>VTU]
+    A([PPO agent]) -->|action<br/>7 values| B[Design<br/>parameters]
+    B --> C[Hex8<br/>mesh]
     C --> D[4C input<br/>deck]
-    D --> E[[4C solver<br/>in a container]]
+    D --> E[4C solver<br/>runs]
     E --> F[VTU<br/>results]
     F --> G[Stress<br/>displacement<br/>strain]
-    G -->|reward + 12-number observation| A
+    G -->|reward| A
+    G -->|observation<br/>12 values| A
 ```
 
 One episode is up to 50 steps. Each step:
