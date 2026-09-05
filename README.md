@@ -13,17 +13,10 @@ front end, so a study can be started and watched without touching Python.
 
 ## The loop
 
-```mermaid
-flowchart LR
-    A([PPO agent]) -->|action<br/>7 values| B[Design<br/>parameters]
-    B --> C[Hex8<br/>mesh]
-    C --> D[4C input<br/>deck]
-    D --> E[4C solver<br/>runs]
-    E --> F[VTU<br/>results]
-    F --> G[Stress<br/>displacement<br/>strain]
-    G -->|reward| A
-    G -->|observation<br/>12 values| A
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/figures/loop_dark.png">
+  <img alt="The loop: PPO agent → design parameters → hex8 mesh → 4C input deck → 4C solver runs → VTU results → stress, displacement, strain → reward and observation back to the agent" src="docs/figures/loop_light.png">
+</picture>
 
 One episode is up to 50 steps. Each step:
 
