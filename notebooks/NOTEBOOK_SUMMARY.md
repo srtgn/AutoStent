@@ -2,7 +2,7 @@
 
 ## Overview
 
-I've created a comprehensive Jupyter notebook (`stent_rl_training.ipynb`) that demonstrates the complete Reinforcement Learning workflow for optimizing stent designs.
+The notebook `stent_rl_training.ipynb` demonstrates the complete Reinforcement Learning workflow for optimizing stent designs.
 
 ## What the Notebook Contains
 
@@ -67,14 +67,14 @@ I've created a comprehensive Jupyter notebook (`stent_rl_training.ipynb`) that d
 
 1. **Install dependencies**:
    ```bash
-   cd /Users/srtgn/Documents/Projects/4c/autostent
+   cd autostent
    source venv/bin/activate
    pip install jupyter matplotlib stable-baselines3
    ```
 
 2. **Start Jupyter**:
    ```bash
-   cd /Users/srtgn/Documents/Projects/4c
+   cd 4c
    jupyter notebook
    ```
 

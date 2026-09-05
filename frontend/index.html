@@ -638,7 +638,7 @@
                 // Real RL state
                 const useRealRL = ref(true);
                 const backendConnected = ref(false);
-                const backendUrl = 'https://4c.up.railway.app';  // Railway API for Real RL
+                const backendUrl = window.AUTOSTENT_BACKEND_URL || 'http://127.0.0.1:8080';  // API server (see README); set window.AUTOSTENT_BACKEND_URL to point at a deployment
                 let pollInterval = null;
 
                 // 4C Docker mode state (uses Railway cloud API)

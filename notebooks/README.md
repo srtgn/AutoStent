@@ -25,7 +25,7 @@ This notebook provides a complete walkthrough of using Reinforcement Learning fo
 
 2. **Activate autostent environment**:
    ```bash
-   cd /Users/srtgn/Documents/Projects/4c/autostent
+   cd autostent
    source venv/bin/activate
    ```
 

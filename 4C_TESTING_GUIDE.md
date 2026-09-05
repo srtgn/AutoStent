@@ -18,7 +18,7 @@
 ### Method 1: Local Test Script (Easiest)
 
 ```bash
-cd /Users/srtgn/Documents/Projects/4c
+cd 4c
 ./railway/test_4c_docker.sh
 ```
 
@@ -33,10 +33,10 @@ This will:
 
 ```bash
 # Test 4C Docker directly with tutorial file
-curl https://4c.up.railway.app/test-4c-docker
+curl http://127.0.0.1:8080/test-4c-docker
 
 # Test with your stent parameters
-curl -X POST https://4c.up.railway.app/test-4c \
+curl -X POST http://127.0.0.1:8080/test-4c \
   -H "Content-Type: application/json" \
   -d '{
     "params": {
@@ -141,13 +141,13 @@ The `/test-4c-docker` endpoint now calls the binary directly, not Docker command
 
 2. **Test the Docker image**:
    ```bash
-   curl https://4c.up.railway.app/test-4c-docker
+   curl http://127.0.0.1:8080/test-4c-docker
    ```
    This will show if 4C can run at all.
 
 3. **Check mesh tools**:
    ```bash
-   curl https://4c.up.railway.app/check-4c
+   curl http://127.0.0.1:8080/check-4c
    ```
    Look for `mesh_tools_available: true`
 

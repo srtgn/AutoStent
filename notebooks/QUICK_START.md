@@ -4,7 +4,7 @@
 
 1. **Install Jupyter and dependencies**:
    ```bash
-   cd /Users/srtgn/Documents/Projects/4c/autostent
+   cd autostent
    source venv/bin/activate
    pip install jupyter matplotlib stable-baselines3
    ```
@@ -18,7 +18,7 @@
 
 1. **Start Jupyter**:
    ```bash
-   cd /Users/srtgn/Documents/Projects/4c
+   cd 4c
    jupyter notebook
    ```
 
@@ -59,7 +59,7 @@ After running, you'll have:
 ### Import Errors
 ```bash
 # Make sure autostent is installed
-cd /Users/srtgn/Documents/Projects/4c/autostent
+cd autostent
 source venv/bin/activate
 pip install -e .
 ```

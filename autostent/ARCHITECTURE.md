@@ -65,7 +65,7 @@ AutoStent is a research-grade software framework for autonomous stent design opt
 1. **Modularity**: Each module is independently testable
 2. **Physical Validity**: All computations are physically meaningful
 3. **HPC-Ready**: Non-interactive, batch-safe execution
-4. **Research-Grade**: Extensible for PhD-level research
+4. **Research-Grade**: Extensible for research use
 5. **No Mocks**: Real FEM integration, no fake data
 
 ## Data Flow

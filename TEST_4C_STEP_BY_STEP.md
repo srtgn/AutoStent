@@ -19,7 +19,7 @@
 
 #### Step 1: Run the Test Script
 ```bash
-cd /Users/srtgn/Documents/Projects/4c
+cd 4c
 ./railway/test_4c_docker.sh
 ```
 
@@ -40,12 +40,12 @@ The script will show:
 
 #### Step 1: Start the Railway server
 ```bash
-# The server should already be running at https://4c.up.railway.app
+# Start the server first: python -m uvicorn railway.api_server:app --port 8080
 ```
 
 #### Step 2: Call the test endpoint
 ```bash
-curl https://4c.up.railway.app/test-4c-docker
+curl http://127.0.0.1:8080/test-4c-docker
 ```
 
 This will:

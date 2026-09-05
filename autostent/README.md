@@ -90,7 +90,7 @@ This framework is designed for research use. All components are:
 - Modular and independently testable
 - HPC-ready (batch execution, SLURM support)
 - Physically meaningful (no mock data)
-- Extensible for PhD-level research
+- Extensible for research use
 
 
 

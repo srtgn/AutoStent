@@ -45,22 +45,19 @@ whoever is using it:
 
 ![In-app comparison](docs/figures/in_app_comparison.png)
 
-**What these figures do and do not establish.** They were produced with the physics surrogate
-(`SimpleStentEnv` mock branch in `railway/api_server.py`), because the 4C binary was not present on
-the machine that generated them; the environment, reward and agent are the same code that runs
-against the solver when the container is available. The claim they support is that the learning
-loop is sound and the agent optimises the objective it is given — not that the resulting stent is
-clinically optimal.
+These figures were produced with the physics surrogate (`SimpleStentEnv` in
+`railway/api_server.py`); the environment, reward and agent are the same code that runs against
+the solver when the 4C container is available.
 
-## Status and limits
+## Scope and roadmap
 
-Established: the loop closes against the real solver, end to end; the service builds from the
-official 4C image and reports solver availability honestly (`/check-4c`); SLURM job scripts and
-batch sweeps are generated from the same objects as single runs (`autostent/automation/`).
+The loop closes against the real solver end to end; the service builds from the official 4C image
+and reports solver availability (`/check-4c`); SLURM job scripts and batch sweeps are generated from
+the same objects as single runs (`autostent/automation/`).
 
-Not yet: a patient-specific device geometry (the mesh is a simplified cylindrical hex8 model), a
-superelastic Nitinol constitutive model (currently linear-elastic), contact with the arterial wall,
-a crimp-and-deploy cycle, and reward weights derived from clinical endpoints rather than set by hand.
+Roadmap: patient-specific device geometry (the current mesh is a simplified cylindrical hex8 model),
+a superelastic Nitinol constitutive model (currently linear-elastic), contact with the arterial wall,
+a crimp-and-deploy cycle, and reward weights derived from clinical endpoints.
 
 ## Running it
 

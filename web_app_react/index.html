@@ -449,7 +449,7 @@
                 // 4C Docker mode state (uses Railway cloud API)
                 const useDocker = ref(false);
                 const dockerAvailable = ref(true);
-                const railwayUrl = 'https://4c.up.railway.app';  // Railway 4C API
+                const railwayUrl = window.AUTOSTENT_BACKEND_URL || 'http://127.0.0.1:8080';  // API server (see README)
                 const webviewerUrl = 'http://localhost:5000';
                 const show4CViewer = ref(false);
 
