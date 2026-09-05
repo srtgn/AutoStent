@@ -864,6 +864,15 @@
                             const res = await fetch(`${backendUrl}/status`);
                             const data = await res.json();
 
+                            // Sync histories on every poll (not only while is_training), so the
+                            // reward/stress charts are populated even when a poll lands after
+                            // training finished or before the first is_training=true response.
+                            if (data.rewards !== undefined) rewardHistory.value = data.rewards;
+                            if (data.stress_history !== undefined) stressHistory.value = data.stress_history;
+                            if (data.displacement_history !== undefined) displacementHistory.value = data.displacement_history;
+                            if (data.episode_rewards !== undefined) episodeRewards.value = data.episode_rewards;
+                            updateCharts();
+
                             if (data.is_training) {
                                 training.value = true;
                                 // Ensure progress only goes forward (never backward)
