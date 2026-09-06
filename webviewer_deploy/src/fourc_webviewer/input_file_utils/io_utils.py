@@ -9,7 +9,7 @@ from pathlib import Path
 from fourcipp.fourc_input import FourCInput
 from loguru import logger
 
-from fourc_webviewer.python_utils import flatten_list
+from fourc_webviewer.python_utils import flatten_list, summarize_validation_error
 
 
 def read_fourc_yaml_file(fourc_yaml_file):
@@ -37,14 +37,18 @@ def read_fourc_yaml_file(fourc_yaml_file):
         fourc_yaml_content = FourCInput.from_4C_yaml(fourc_yaml_file)
         fourc_yaml_content.load_includes()
     except Exception as exc:
-        logger.error(exc)  # currently, we throw the exception as terminal output
+        logger.error(f"Could not read {fourc_yaml_file}: {exc}")
         return (FourCInput({}), [], 0, 0, False)
 
     # Try to validate, but continue even if validation fails
     try:
         fourc_yaml_content.validate()
     except Exception as exc:
-        logger.warning(f"Validation failed, continuing without validation: {exc}")
+        logger.warning(
+            f"Validation of {Path(fourc_yaml_file).name} failed, continuing without "
+            f"validation - {summarize_validation_error(exc)}"
+        )
+        logger.debug(f"Full validation error:\n{exc}")
         # Don't return here - continue with the loaded (but unvalidated) content
 
     with open(fourc_yaml_file, "r") as input_file:
@@ -83,7 +87,11 @@ def write_fourc_yaml_file(fourc_yaml_content, new_fourc_yaml_file):
     try:
         fourc_yaml_content.validate()
     except Exception as exc:
-        logger.error(exc)  # currently, we throw the exception as terminal output
+        logger.error(
+            f"Refusing to write {new_fourc_yaml_file} - "
+            f"{summarize_validation_error(exc)}"
+        )
+        logger.debug(f"Full validation error:\n{exc}")
         return False
 
     # check if the output file suffix is supported
