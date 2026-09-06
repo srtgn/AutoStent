@@ -23,6 +23,19 @@ from loguru import logger
 # levels which are informational rather than failures -> stdout
 INFO_LEVELS = frozenset(["TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING"])
 
+# libraries whose INFO output is per-token or per-request chatter, kept at the
+# third-party level even if they set a level of their own
+NOISY_LOGGERS = (
+    "trame",
+    "trame_client",
+    "trame_server",
+    "trame_vtk",
+    "trame_vuetify",
+    "wslink",
+    "aiohttp.access",
+    "aiohttp.web_log",
+)
+
 LOG_FORMAT = (
     "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | "
     "{name}:{function}:{line} - {message}"
@@ -111,7 +124,16 @@ def configure_logging(level=None):
         diagnose=False,
     )
 
-    logging.basicConfig(handlers=[_InterceptHandler()], level=0, force=True)
+    # Third-party libraries log through the standard library. trame emits an
+    # INFO record per parsed template token, which on its own is enough to hit
+    # a log collector's rate limit and get the useful records dropped, so hold
+    # them at WARNING unless asked for more.
+    third_party_level = os.environ.get("THIRD_PARTY_LOG_LEVEL", "WARNING").upper()
+    logging.basicConfig(
+        handlers=[_InterceptHandler()], level=third_party_level, force=True
+    )
+    for noisy in NOISY_LOGGERS:
+        logging.getLogger(noisy).setLevel(third_party_level)
 
     quiet_progress_bars()
 
