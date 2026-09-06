@@ -18,13 +18,27 @@ fi
 
 # The pip build of VTK renders through GLX, so it needs a display even for
 # offscreen rendering - without one it logs "bad X server connection" and the
-# render window stays empty. Xvfb provides that display; if it is unavailable
-# the viewer still starts, only the 3D view will not render.
-if command -v xvfb-run >/dev/null 2>&1; then
-  echo "Starting the 4C webviewer under Xvfb"
-  exec xvfb-run -a --server-args="-screen 0 1920x1080x24" \
-    python -m fourc_webviewer.main
+# render window stays empty.
+#
+# Xvfb is started here rather than through xvfb-run: xvfb-run waits for the X
+# server to signal readiness, and that handshake never completes when it runs
+# as PID 1 of a container, so it hangs before ever launching the command - the
+# viewer then produces no output at all and no health check can pass.
+DISPLAY_NUM="${DISPLAY_NUM:-99}"
+if command -v Xvfb >/dev/null 2>&1; then
+  Xvfb ":${DISPLAY_NUM}" -screen 0 1920x1080x24 -nolisten tcp &
+  for _ in $(seq 1 100); do
+    [ -e "/tmp/.X11-unix/X${DISPLAY_NUM}" ] && break
+    sleep 0.1
+  done
+  if [ -e "/tmp/.X11-unix/X${DISPLAY_NUM}" ]; then
+    export DISPLAY=":${DISPLAY_NUM}"
+    echo "Xvfb ready on display ${DISPLAY}"
+  else
+    echo "Xvfb did not come up, starting the viewer without a display"
+  fi
+else
+  echo "Xvfb not installed, starting the viewer without a display"
 fi
 
-echo "Xvfb not available, starting the 4C webviewer without a display"
 exec python -m fourc_webviewer.main

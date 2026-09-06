@@ -8,7 +8,6 @@ RUN apt-get update && apt-get install -y \
     libosmesa6 \
     libegl1 \
     xvfb \
-    xauth \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
