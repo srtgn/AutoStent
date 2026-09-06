@@ -118,7 +118,6 @@ def _toolbar(server_controller):
             with vuetify.VBtn(
                 tag="a",
                 v_bind="{...props, target: '_blank'}",
-                v_tooltip="4C Documentation",
                 href="https://4c-multiphysics.github.io/4C/documentation/index.html",
                 icon=True,
                 rel="noopener noreferrer",
