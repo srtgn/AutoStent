@@ -1,5 +1,6 @@
 # [AutoStent](https://autostent.up.railway.app)
 
+[![Live demo](https://img.shields.io/badge/live%20demo-autostent.up.railway.app-brightgreen)](https://autostent.up.railway.app)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A reinforcement-learning agent designs endovascular stents by driving a real multiphysics solver —
