@@ -2,14 +2,15 @@
 
 import argparse
 
+from loguru import logger
+
 import fourc_webviewer.run_webserver as webserver
 
 
 def main():
     """Get the CLI arguments and start the webviewer."""
-    print("CLI Main Entry Point", flush=True)
     arguments = get_arguments()
-    print(f"Arguments: {arguments}", flush=True)
+    logger.info(f"Starting the 4C webviewer with arguments: {arguments}")
     webserver.run_webviewer(**arguments)
 
 

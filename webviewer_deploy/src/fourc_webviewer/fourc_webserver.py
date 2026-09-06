@@ -32,6 +32,7 @@ from fourc_webviewer.input_file_utils.io_utils import (
     read_fourc_yaml_file,
     write_fourc_yaml_file,
 )
+from fourc_webviewer.log_utils import route_vtk_messages
 from fourc_webviewer.python_utils import (
     convert_string2number,
     dict_leaves_to_number_if_schema,
@@ -48,6 +49,10 @@ PV_SPHERE_FRAC_SCALE = 1.0 / 75.0
 
 # always set pyvista to plot off screen with Trame
 pv.OFF_SCREEN = True
+
+# VTK writes straight to stderr, which makes every notice it emits while
+# probing for a display look like an application error -> send it to the logger
+route_vtk_messages()
 
 
 @TrameApp()

@@ -128,6 +128,34 @@ def parse_validation_error_text(text):
     return error_dict
 
 
+def summarize_validation_error(error):
+    """Condense a ValidationError into a single readable line.
+
+    The message of a validation error spans dozens of lines - the offending
+    parameters are echoed back in full - which a log collector turns into one
+    entry per line. This keeps the part that identifies the problem; the full
+    text is still available on the DEBUG level.
+
+    Args:
+        error (Exception | str): validation error (or its message).
+
+    Returns:
+        str: one-line summary of the failing parameters.
+    """
+    text = str(error)
+
+    paths = re.findall(r"- Parameter in (\S+)", text)
+    if paths:
+        return f"{len(paths)} invalid entries: {', '.join(paths)}"
+
+    # unknown message layout: fall back to its first meaningful line
+    for line in text.splitlines():
+        if line.strip():
+            return line.strip()
+
+    return f"{type(error).__name__} without a message"
+
+
 def smart_string2number_cast(input_string):
     """Casts an input_string to float / int if possible. Helpful when dealing
     with automatic to-string conversions from vuetify.VTextField input

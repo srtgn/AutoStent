@@ -638,7 +638,13 @@
                 // Real RL state
                 const useRealRL = ref(true);
                 const backendConnected = ref(false);
-                const backendUrl = window.AUTOSTENT_BACKEND_URL || 'http://127.0.0.1:8080';  // API server (see README); set window.AUTOSTENT_BACKEND_URL to point at a deployment
+                // API server (see README). Set window.AUTOSTENT_BACKEND_URL to point at
+                // another deployment; a page opened locally talks to a local server.
+                const servedLocally = ['localhost', '127.0.0.1', ''].includes(window.location.hostname);
+                const backendUrl = window.AUTOSTENT_BACKEND_URL
+                    || (servedLocally ? 'http://127.0.0.1:8080' : 'https://4c.up.railway.app');
+                // the 4C simulation endpoints are served by that same API
+                const railwayUrl = backendUrl;
                 let pollInterval = null;
 
                 // 4C Docker mode state (uses Railway cloud API)
